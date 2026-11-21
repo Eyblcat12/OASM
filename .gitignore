@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+snapshot/
+snapshots/
+oasm-snapshot-*/
+*.sql.gz
+*.dump
+*.tar
+*.tar.gz
+*.zip
+*.dpapi
+*.pem
+*.key
+*.pfx
+*.log

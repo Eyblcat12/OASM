@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-11-21T00:00:00.000Z",
+  "source": "oasm-vm-test",
+  "service": "core-api",
+  "severity": "info",
+  "message": "Synthetic OASM SIEM log test",
+  "correlationId": "86178c84-c73f-4a2b-aa25-a9fd5b3ee369",
+  "synthetic": true
+}

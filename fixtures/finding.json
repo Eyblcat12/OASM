@@ -1,0 +1,26 @@
+{
+  "id": "1ee72037-f60a-4e27-b2c9-4efd1f504e89",
+  "type": "vulnerability.detected",
+  "workspaceId": "c8907f44-03fa-4c5a-be8a-e7bf965e81a1",
+  "occurredAt": "2026-11-21T00:00:00.000Z",
+  "sentAt": "2026-11-21T00:00:00.000Z",
+  "outcome": "success",
+  "resourceType": "vulnerability",
+  "resourceId": "9484c96f-7838-402b-bf30-a24becac31f6",
+  "metadata": {"synthetic": true},
+  "payload": {
+    "jobId": "d54bfa98-4a42-48cc-98ba-6ddbc7cb5e7a",
+    "targetId": "41c9e4cf-3924-4854-995b-b78d7d8a69e8",
+    "assetId": "01951a54-7e66-459c-8ad5-5fabe98275bc",
+    "assetValue": "oasm-test.example",
+    "vulnerabilities": [
+      {
+        "id": "9484c96f-7838-402b-bf30-a24becac31f6",
+        "name": "OASM SIEM/TI test finding",
+        "severity": "info",
+        "affectedUrl": "https://oasm-test.example/",
+        "cveId": []
+      }
+    ]
+  }
+}
