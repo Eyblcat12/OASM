@@ -1,29 +1,50 @@
-# Docker Engine trên VM Linux
+# Triển khai trên Docker Engine
 
-Trên Linux x86-64 của System, cài Docker Engine và Docker Compose v2 theo bản phân phối VM sử dụng, sau đó dùng tài khoản vận hành được cấp quyền quản lý Docker. [Docker Engine trên Ubuntu](https://docs.docker.com/engine/install/ubuntu/), [Compose plugin](https://docs.docker.com/compose/install/linux/).
+Dùng cho VM Linux x86-64 do System quản lý. Cài Docker Engine và Compose v2 theo bản phân phối của VM. Tài khoản triển khai cần truy cập Docker, registry của các image phụ trợ và thư mục chứa snapshot. [Docker Engine trên Ubuntu](https://docs.docker.com/engine/install/ubuntu/), [Docker Compose plugin](https://docs.docker.com/compose/install/linux/).
+
+## Chuẩn bị VM
 
 ```bash
 docker info --format '{{.OSType}}/{{.Architecture}}'
 docker compose version
-```
-
-VM cần truy cập được nơi cung cấp các image phụ trợ theo digest trong `compose.yaml` và có đủ ổ đĩa cho archive, image cùng volume sau khi giải nén. Nếu dùng registry mirror hoặc tải image offline, System cần bảo đảm các tham chiếu digest tương ứng tồn tại trên VM.
-
-## Lần triển khai đầu tiên
-
-```bash
 git clone https://github.com/Eyblcat12/OASM.git oasm-vm-ti-siem
 cd oasm-vm-ti-siem
 umask 077
 cp .env.example .env
 chmod 600 .env
-# Điền .env và kiểm tra đường mạng thử nghiệm theo README trước khi chạy.
+```
+
+Điền `.env` theo [yêu cầu bàn giao](README.md#chuẩn-bị-bàn-giao). Dành đủ dung lượng cho archive, image và volume sau khi khôi phục. Với registry mirror hoặc image offline, kiểm tra các digest trong [Compose](compose.yaml) đã có trên VM.
+
+## Lần triển khai đầu tiên
+
+Sau khi System xác nhận đường mạng thử nghiệm và thư mục snapshot:
+
+```bash
 bash deploy-test.sh /path/to/oasm-snapshot-YYYYMMDDTHHMMSSZ
 ```
 
-Lệnh kiểm checksum, nạp image, phục hồi DB và đối chiếu dữ liệu trước khi mở giao diện. Cổng quản trị bind loopback. Từ máy quản trị, dùng `ssh -L 6276:127.0.0.1:6276 user@vm-host` rồi mở `http://localhost:6276`. Khi System cấp reverse proxy HTTPS, cập nhật `BASE_URL`, kiểm tra header chuyển tiếp và xác nhận đăng nhập cùng tải file.
+Trên máy quản trị, mở SSH tunnel:
 
-## Trạng thái và bảo trì
+```bash
+ssh -L 6276:127.0.0.1:6276 user@vm-host
+```
+
+Mở `http://localhost:6276`. Nếu System cấp reverse proxy HTTPS, cấu hình `BASE_URL` theo origin HTTPS và kiểm tra header chuyển tiếp, đăng nhập và tải file. Xem [các bước nghiệm thu](README.md#kiểm-tra-sau-triển-khai).
+
+## Cập nhật bản VM đã phục hồi
+
+Khi muốn áp dụng logo **NCS OASM** cho stack đã phục hồi từ commit cũ, chạy trong repo trên VM khi database đang hoạt động:
+
+```bash
+git pull --ff-only
+docker compose --env-file .env exec -T postgres psql -X -v ON_ERROR_STOP=1 -U postgres -d open_asm < branding/apply.sql
+docker compose --env-file .env up -d --no-deps --force-recreate console
+```
+
+Lệnh SQL đặt tên thương hiệu và sử dụng icon đóng gói của console. Nếu trình duyệt còn favicon cũ, tải lại trang hoặc mở cửa sổ riêng tư. Lần triển khai đầu tiên qua `deploy-test.sh` đã áp dụng cấu hình này.
+
+## Vận hành
 
 ```bash
 docker compose --env-file .env ps -a
@@ -32,4 +53,4 @@ docker compose --env-file .env stop
 docker compose --env-file .env up -d console
 ```
 
-`stop` giữ các volume. Sau lần phục hồi đầu tiên, dùng `up -d console` để mở lại dịch vụ từ dữ liệu đã phục hồi. Xem [README](README.md) để kiểm thử TI/SIEM và xác nhận dữ liệu.
+`stop` giữ các volume. Nếu phục hồi dừng giữa chừng, lưu thông báo lỗi và xác định bước chưa hoàn tất trước khi thực hiện lại trên môi trường trống.

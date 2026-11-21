@@ -17,10 +17,12 @@ if [[ ! -s .env || ! -s "$snapshot/SHA256SUMS" ]]; then
     printf 'Configure .env and provide a completed snapshot with SHA256SUMS.\n' >&2
     exit 2
 fi
-if [[ ! -f ./nginx.conf || ! -f ./runtime-overrides/connectors.nuclei-60m.json ]]; then
-    printf 'The nginx and runtime configuration files must be present.\n' >&2
-    exit 2
-fi
+for file in nginx.conf runtime-overrides/connectors.nuclei-60m.json branding/ncs-oasm-icon.png branding/ncs-oasm-wordmark.png branding/apply.sql; do
+    if [[ ! -s "$file" ]]; then
+        printf 'A deployment file is missing: %s\n' "$file" >&2
+        exit 2
+    fi
+done
 
 (cd -- "$snapshot" && sha256sum --check SHA256SUMS)
 files=(postgres.dump counts.txt workspace-id.txt rustfs-data.tar.gz audit-archive.tar.gz redis-data.tar.gz worker-state.tar.gz oasm-images.tar)
@@ -63,5 +65,7 @@ for volume in rustfs-data audit-archive; do
         --mount "type=volume,source=oasm-ti-siem-test_$volume,target=/restore" \
         -i "$archive_image" -xzf - -C /restore < "$snapshot/$volume.tar.gz"
 done
+
+"${compose[@]}" exec -T postgres psql -X -v ON_ERROR_STOP=1 -U postgres -d open_asm < branding/apply.sql
 
 printf 'Data restored and counts matched. Check test VM egress before starting the API and console.\n'

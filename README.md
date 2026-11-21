@@ -1,74 +1,71 @@
-# Chuyển bản OASM hiện tại lên VM để thử TI/SIEM
+# NCS OASM
 
-Gói dành cho VM Linux x86-64 trên ESXi, dùng Docker Engine và Compose v2. PostgreSQL lưu Target, project, người dùng, cấu hình, lịch sử job và finding. RustFS lưu file và artifact. Audit archive được chuyển cùng snapshot. Snapshot cũng giữ bản sao Redis và worker-state để đối chiếu khi bàn giao. Môi trường thử tích hợp dùng Redis mới để tránh phát lại hàng đợi cũ.
+![Logo NCS OASM](branding/ncs-oasm-wordmark.png)
 
-## Clone trên VM
+Bộ triển khai OASM để chuyển dữ liệu từ bản PoC sang máy thử nghiệm và kiểm tra luồng tiếp nhận sự kiện của **Threat Intelligence (TI)** và **SIEM**. Bộ Compose khởi động giao diện, API và các dịch vụ dữ liệu. Worker quét không nằm trong cấu hình chạy thử tích hợp.
 
-System có thể clone repo dưới đây. Nếu repo yêu cầu xác thực, dùng quyền đọc do chủ repo cấp cho VM. Với SSH, có thể dùng SSH deploy key chỉ đọc.
+| Môi trường | Hướng dẫn |
+| --- | --- |
+| VM Linux x86-64 trên ESXi | [Docker Engine và Compose v2](DOCKER-ENGINE.md) |
+| Máy Windows x86-64 | [Docker Desktop với Linux containers](DOCKER-DESKTOP.md) |
+
+## Chuẩn bị bàn giao
+
+| Đầu vào | Yêu cầu |
+| --- | --- |
+| **Snapshot nguồn** | PostgreSQL dump, archive RustFS và audit, image PoC, số liệu đối soát và `SHA256SUMS`. Snapshot cũng giữ Redis và worker-state cùng kỳ. Bản thử khởi tạo Redis mới để các việc cũ không phát lại. |
+| **Cấu hình môi trường** | Tạo `.env` từ [mẫu](.env.example). Lấy khóa và mật khẩu từ kho bí mật của System. Cần giữ `ENCRYPTION_KEYS` nguồn để mở dữ liệu đã mã hóa. Đối chiếu thông tin xác thực RustFS theo môi trường. |
+| **Đầu nhận thử nghiệm** | Đội TI/SIEM cung cấp endpoint hoặc collector, cơ chế xác thực và nơi tra cứu kết quả. System xác nhận đường mạng của VM trước khi mở API. Snapshot có thể chứa endpoint tích hợp từ môi trường nguồn. |
+
+Repo công khai chứa mã triển khai, tài liệu và dữ liệu mẫu. Chuyển snapshot và image PoC qua kênh nội bộ có mã hóa và phân quyền. Giá trị `REDIS_PASSWORD` cần tương thích với URI trong Compose.
+
+## Triển khai và phục hồi
 
 ```bash
 git clone https://github.com/Eyblcat12/OASM.git oasm-vm-ti-siem
 cd oasm-vm-ti-siem
+cp .env.example .env
 ```
 
-Repo chứa cấu hình triển khai, script và mẫu dữ liệu thử. Chuyển snapshot chứa dữ liệu và file image của bản PoC qua kênh nội bộ. Tạo `.env` trên VM bằng giá trị lấy từ kho bí mật System.
+Điền `.env`, sau đó chạy lệnh sau với đường dẫn đến snapshot đã xuất:
 
-- [Docker Engine trên VM Linux](DOCKER-ENGINE.md)
-- [Docker Desktop trên Windows](DOCKER-DESKTOP.md)
+```bash
+bash deploy-test.sh /path/to/oasm-snapshot-YYYYMMDDTHHMMSSZ
+```
 
-## 1. Xuất snapshot từ máy Windows
+Script kiểm tra checksum, nạp image, khôi phục database và đối soát số dòng trước khi mở giao diện. File và bằng chứng cũ được phục hồi từ RustFS và audit archive. Giao diện hiển thị thương hiệu **NCS OASM** khi khởi động.
 
-1. Chuẩn bị thư mục backup riêng có quyền truy cập giới hạn và đủ chỗ cho dữ liệu cùng image. Chuyển snapshot qua kênh nội bộ có mã hóa và phân quyền do System quản lý.
-2. Trong cửa sổ bảo trì nguồn, kết thúc các công việc đang chạy và dừng worker, API, Redis và RustFS. Giữ PostgreSQL hoạt động để xuất dữ liệu. Thao tác dừng thực hiện theo quy trình vận hành OASM hiện có.
-3. Chạy PowerShell 7.4 trở lên. Thay đường dẫn và UUID ví dụ bằng thư mục backup riêng và ID của workspace cần chuyển.
+Để kiểm tra riêng dữ liệu trước khi mở API, dùng `bash restore-data.sh /path/to/snapshot`, rồi chạy `docker compose --env-file .env up -d console` khi System xác nhận đường mạng. Sau lần phục hồi đầu tiên, dùng `up -d console` để mở lại stack.
+
+## Xuất snapshot nguồn trên Windows
+
+Trong cửa sổ bảo trì, kết thúc các công việc còn chạy và dừng worker, API, Redis và RustFS. Giữ PostgreSQL hoạt động để xuất dữ liệu. Chạy lệnh bằng PowerShell 7.4 trở lên, thay ID ví dụ bằng workspace ID thực tế:
 
 ```powershell
 & .\Export-Snapshot.ps1 -PrivateBackupDirectory 'E:\private-backup' -ProjectWorkspaceId '00000000-0000-0000-0000-000000000000'
 ```
 
-Script đối chiếu 128 Target của workspace dự án, tạo PostgreSQL dump, đóng gói các volume cùng image đã triển khai, rồi ghi checksum. Snapshot sẵn sàng khi script báo **Snapshot ready**. Các bản backup trước khi đủ 128 Target có thể dùng đối chiếu lịch sử.
+Script mặc định kiểm tra workspace có **128 Target**. Chỉ bàn giao thư mục snapshot sau khi có thông báo **Snapshot ready** và file checksum.
 
-Dùng kho bí mật của System để chuyển **ENCRYPTION_KEYS** đang có, **BETTER_AUTH_SECRET** nếu cần giữ tương thích phiên, và cấu hình bí mật của RustFS. Tạo thông tin kết nối PostgreSQL, Redis và khóa dành riêng cho bản test theo chuẩn nội bộ. Dùng mật khẩu Redis dạng URL-safe vì Compose đưa giá trị vào URI. File `.env` mẫu chỉ chứa tên biến. Snapshot dữ liệu và worker-state vẫn chứa dữ liệu nội bộ cần bảo vệ.
-
-## 2. Khôi phục trên VM thử tích hợp
-
-Copy gói cấu hình và thư mục snapshot bằng kênh đã chốt. Mở thư mục gói trên VM, tạo `.env` quyền hạn chế và điền các giá trị từ kho bí mật. Giữ `BASE_URL=http://localhost:6276` khi truy cập bằng SSH tunnel trên cổng 6276. Khi dùng reverse proxy, đặt BASE_URL theo origin HTTPS đã cấp và xác nhận cấu hình proxy tin cậy của bản triển khai.
+## Kiểm tra sau triển khai
 
 ```bash
-umask 077
-cp .env.example .env
-chmod 600 .env
-```
-
-Sau khi điền `.env` và xác nhận đường mạng thử nghiệm, dùng `bash deploy-test.sh /path/to/snapshot` để phục hồi và mở giao diện trong một lệnh. Nếu cần kiểm tra sau khi phục hồi dữ liệu, dùng quy trình hai bước dưới đây. Restore dừng nếu các volume chính đã tồn tại. Script so khớp checksum, nạp image, restore DB và kiểm tra số hàng trước khi khôi phục object storage và audit archive. Các image phụ trợ được kéo theo digest.
-
-```bash
-bash restore-data.sh /path/to/oasm-snapshot-YYYYMMDDTHHMMSSZ
-```
-
-Trước khi mở API, System giới hạn đường ra của VM/container tới các dịch vụ nội bộ cần thiết và endpoint **test** đã xác nhận. DB sao chép có thể chứa tích hợp cũ, nên kiểm tra lại cấu hình tích hợp trên VM. Bộ Compose thử nghiệm chỉ gồm dịch vụ quản trị và lưu trữ.
-
-```bash
-docker compose --env-file .env up -d console
 docker compose --env-file .env ps -a
 curl --fail --silent --show-error http://localhost:6276/api/health
 ```
 
-Từ máy quản trị, có thể mở SSH tunnel bằng `ssh -L 6276:127.0.0.1:6276 user@vm-host` rồi truy cập `http://localhost:6276`. Đăng nhập, đối soát 128 Target, project và lịch sử. Mở ít nhất một finding cũ và một file/artifact đã biết. Nếu restore dừng giữa chừng, giữ log bước lỗi để System quyết định phục hồi trên project trống tiếp theo.
+Giao diện quản trị nghe ở loopback. Truy cập tại `http://localhost:6276` trên máy chạy Docker hoặc qua SSH tunnel theo [hướng dẫn Linux](DOCKER-ENGINE.md). Đăng nhập, đối chiếu 128 Target cùng số project, job và finding trong `counts.txt`. Mở một finding cũ và tải một file đã biết để xác nhận dữ liệu và object storage.
 
-## 3. Kiểm thử đầu nhận
+| Luồng | Cách thử | Điều kiện đạt |
+| --- | --- | --- |
+| **OASM → TI** | Gửi [finding mẫu](fixtures/finding.json) tới endpoint test theo cơ chế đã thống nhất. Nếu tương thích, dùng thêm chức năng Test của OASM để kiểm tra kết nối từ ứng dụng. | Tìm thấy sự kiện theo ID và đối chiếu được asset, mức độ, URL cùng loại sự kiện. |
+| **OASM → SIEM** | Dùng [log mẫu](fixtures/operational-log.json) để kiểm tra mapping. Kiểm tra thêm một log thực từ dịch vụ OASM khi collector đã cấu hình. | Tìm thấy log theo correlation ID hoặc timestamp và service. |
+| **NCS OASM** | Mở lại giao diện sau khi triển khai. | Màn hình tải hiển thị logo ngang. Màn hình đăng nhập và thanh bên hiển thị biểu tượng vòng quét cùng tên NCS OASM. |
 
-| Hạng mục | Cách kiểm tra | Tiêu chí đạt |
-|---|---|---|
-| TI hoặc đầu nhận webhook thử | Đội TI cung cấp URL thử và xác thực qua kênh nội bộ. Dùng `fixtures/finding.json` để kiểm tra schema JSON, hoặc chức năng Test của OASM nếu đầu nhận tương thích. | Đầu nhận trả 2xx và tìm thấy ID mẫu, loại sự kiện, asset, severity và affected URL. |
-| SIEM nhận log | Đội SIEM cung cấp collector hoặc cơ chế ingest và index/dataset thử. Gửi mẫu `fixtures/operational-log.json` theo cơ chế đó, rồi cấu hình collector đọc log dịch vụ OASM nếu nằm trong phạm vi triển khai. | SIEM truy vấn được correlation ID, timestamp, service và nội dung. Collector nhận được một dòng log từ VM. |
-| Dữ liệu gốc | So khớp `counts.txt`, mở hồ sơ cũ và kiểm tra một file trong giao diện. | 128 Target của workspace dự án và số project/job/finding khớp snapshot. |
-
-Sự kiện mẫu dùng tên miền giả lập và timestamp cố định. Khi chạy thử, đổi timestamp sang UTC hiện tại và dùng ID mới nếu bộ nhận có chống trùng. Ghi lại mã phản hồi và kết quả truy vấn đầu nhận. HTTP 2xx xác nhận tiếp nhận ở tầng giao thức. Kết quả tìm được trong TI/SIEM mới xác nhận việc xử lý và mapping.
-
-Tài liệu tham chiếu [Docker image save](https://docs.docker.com/reference/cli/docker/image/save/) và [PostgreSQL pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html).
+Trước khi gửi mẫu, cập nhật thời gian UTC và dùng ID mới nếu đầu nhận chống trùng. Ghi lại phản hồi và kết quả tra cứu ở đầu nhận. HTTP 2xx xác nhận tiếp nhận ở tầng giao thức. Kết quả tra cứu xác nhận việc xử lý và mapping.
 
 ## Nguồn và giấy phép
 
-- `nginx.conf` lấy từ `console/nginx.conf` của Open ASM tại commit `2e12e49e8ab5420746d9faf43fd48f57a923db58`. Cổng upstream được chỉnh thành 6277 theo bản triển khai hiện tại. Xem [giấy phép Open ASM](licenses/open-asm-AGPL-3.0.txt).
-- Manifest runtime dựa trên manifest của Open ASM tại cùng commit, với thời gian chờ Nuclei được đặt thành 3600 giây theo cấu hình PoC. Xem thêm [giấy phép](licenses/oasm-connectors-Apache-2.0.txt) và [thông báo bản quyền](licenses/oasm-connectors-NOTICE.txt) của OASM Connectors.
+- Cấu hình Nginx và manifest dựa trên Open ASM tại commit `2e12e49e8ab5420746d9faf43fd48f57a923db58`. Bản triển khai đổi cổng upstream thành 6277, bổ sung nhận diện giao diện và giữ timeout Nuclei 3600 giây của PoC. [Giấy phép Open ASM](licenses/open-asm-AGPL-3.0.txt).
+- Tham chiếu OASM Connectors đi kèm [giấy phép Apache 2.0](licenses/oasm-connectors-Apache-2.0.txt) và [thông báo bản quyền](licenses/oasm-connectors-NOTICE.txt).
+- [Docker image save](https://docs.docker.com/reference/cli/docker/image/save/) và [PostgreSQL pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html).
