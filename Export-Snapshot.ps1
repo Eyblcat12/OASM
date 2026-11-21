@@ -21,11 +21,13 @@ if (-not ($parent -is [IO.DirectoryInfo])) {
 
 $workspaceId = $ProjectWorkspaceId.ToString()
 $countsArgs = @('exec', '-i', 'oasm-postgres', 'psql', '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1',
-    '-v', "project_workspace_id=$workspaceId", '-U', 'postgres', '-d', 'open_asm')
+    '-v', "project_workspace_id=$workspaceId", '-v', 'include_configuration_counts=1',
+    '-U', 'postgres', '-d', 'open_asm')
 
 $stack = @(docker ps --filter 'label=com.docker.compose.project=oasm-docker' --format '{{.Names}}')
 $connectors = @(docker ps --filter 'network=oasm_connectors' --format '{{.Names}}')
-$workers = @($stack | Where-Object { $_ -like 'oasm-docker-oasm-worker-*' })
+$workers = @(docker ps --filter 'label=com.docker.compose.project=oasm-docker' `
+    --filter 'label=com.docker.compose.service=oasm-worker' --format '{{.Names}}')
 if (($stack -contains 'oasm-api') -or ($stack -contains 'oasm-rustfs') -or
     ($stack -contains 'oasm-redis') -or $workers.Count -ne 0 -or
     $connectors.Count -ne 0) {

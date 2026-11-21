@@ -4,8 +4,13 @@ set -euo pipefail
 # Docker expects container paths verbatim, including when called from Git Bash.
 export MSYS2_ARG_CONV_EXCL='*'
 
+check_only=false
+if [[ ${1:-} == --check ]]; then
+    check_only=true
+    shift
+fi
 if [[ $# -ne 1 || ! -d $1 ]]; then
-    printf 'Usage: bash restore-data.sh /path/to/snapshot\n' >&2
+    printf 'Usage: bash restore-data.sh [--check] /path/to/snapshot\n' >&2
     exit 2
 fi
 snapshot=$(cd -- "$1" && pwd)
@@ -37,6 +42,13 @@ if [[ ! $workspace_id =~ ^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$ ]]
     printf 'Invalid workspace ID in snapshot.\n' >&2
     exit 2
 fi
+
+"${compose[@]}" config --quiet
+if "$check_only"; then
+    printf 'Snapshot checksums and Compose configuration passed.\n'
+    exit 0
+fi
+
 for volume in pgdata18 rustfs-data audit-archive; do
     if docker volume inspect "oasm-ti-siem-test_$volume" >/dev/null 2>&1; then
         printf 'Destination volume already exists: %s\n' "$volume" >&2
@@ -44,7 +56,6 @@ for volume in pgdata18 rustfs-data audit-archive; do
     fi
 done
 
-"${compose[@]}" config --quiet
 docker image load < "$snapshot/oasm-images.tar"
 [[ $(docker image inspect --format '{{.Id}}' local/oasm-api:poc-2e12e49) == sha256:a93a128528c02b0acbb46902e27e62a2c56479fe12df0a3892492325e7125042 ]]
 [[ $(docker image inspect --format '{{.Id}}' local/oasm-console:poc-2e12e49) == sha256:d31b06be08d760220fa6ce1b123e6c2e9eddcd121c9338793dd3d3190550b154 ]]
@@ -53,10 +64,17 @@ docker image load < "$snapshot/oasm-images.tar"
 "${compose[@]}" up -d --wait --wait-timeout 150 postgres
 "${compose[@]}" exec -T postgres pg_restore -U postgres -d open_asm \
     --exit-on-error --single-transaction --no-owner --no-privileges < "$snapshot/postgres.dump"
-diff -u <(tr -d '\r' < "$snapshot/counts.txt") <(
-    "${compose[@]}" exec -T postgres psql -X -A -t -v ON_ERROR_STOP=1 \
+
+# Snapshots from older exports only include the initial inventory and jobs counts.
+count_options=()
+if grep -q '^project_workflows=' "$snapshot/counts.txt"; then
+    count_options=(-v include_configuration_counts=1)
+fi
+actual_counts=$(
+    "${compose[@]}" exec -T postgres psql -X -A -t -v ON_ERROR_STOP=1 "${count_options[@]}" \
         -v "project_workspace_id=$workspace_id" -U postgres -d open_asm < counts.sql
 )
+diff -u <(tr -d '\r' < "$snapshot/counts.txt") <(printf '%s\n' "$actual_counts")
 
 for volume in rustfs-data audit-archive; do
     docker volume create --label com.docker.compose.project=oasm-ti-siem-test \

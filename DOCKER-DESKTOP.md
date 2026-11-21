@@ -26,6 +26,7 @@ cp .env.example .env
 Điền `.env` theo [yêu cầu bàn giao](README.md#chuẩn-bị-bàn-giao) và bảo vệ file bằng quyền truy cập Windows. Khi đã nhận snapshot và xác nhận đường mạng thử nghiệm, chạy lệnh dưới đây. Git Bash biểu diễn ổ E bằng `/e`.
 
 ```bash
+bash deploy-test.sh --check /e/private-backup/oasm-snapshot-YYYYMMDDTHHMMSSZ
 bash deploy-test.sh /e/private-backup/oasm-snapshot-YYYYMMDDTHHMMSSZ
 ```
 

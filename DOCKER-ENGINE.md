@@ -4,6 +4,8 @@ Dùng cho VM Linux x86-64 do System quản lý. Cài Docker Engine và Compose v
 
 ## Chuẩn bị VM
 
+Mức đề xuất cấp cho dự án 128 website là 8 vCPU, 32 GB RAM và 300 GB SSD. Nếu chỉ phục hồi dữ liệu và kiểm tra kết nối TI/SIEM, có thể bắt đầu với 4 vCPU, 8 GB RAM và 120 GB SSD sau khi đối chiếu dung lượng snapshot và volume. Đây là cấu hình dự kiến, cần đo lại khi nghiệm thu.
+
 ```bash
 docker info --format '{{.OSType}}/{{.Architecture}}'
 docker compose version
@@ -21,6 +23,7 @@ chmod 600 .env
 Sau khi System xác nhận đường mạng thử nghiệm và thư mục snapshot:
 
 ```bash
+bash deploy-test.sh --check /path/to/oasm-snapshot-YYYYMMDDTHHMMSSZ
 bash deploy-test.sh /path/to/oasm-snapshot-YYYYMMDDTHHMMSSZ
 ```
 

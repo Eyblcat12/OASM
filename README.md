@@ -2,7 +2,7 @@
 
 ![Logo NCS OASM](branding/ncs-oasm-wordmark.png)
 
-Bộ triển khai OASM để chuyển dữ liệu từ bản PoC sang máy thử nghiệm và kiểm tra luồng tiếp nhận sự kiện của **Threat Intelligence (TI)** và **SIEM**. Bộ Compose khởi động giao diện, API và các dịch vụ dữ liệu. Worker quét không nằm trong cấu hình chạy thử tích hợp.
+Bộ triển khai NCS OASM để phục hồi môi trường quản lý trên VM từ dữ liệu PoC, xem kết quả đã lưu và kết nối **Threat Intelligence (TI)** và **SIEM**. Bộ Compose khởi động giao diện, API và các dịch vụ dữ liệu.
 
 | Môi trường | Hướng dẫn |
 | --- | --- |
@@ -13,7 +13,7 @@ Bộ triển khai OASM để chuyển dữ liệu từ bản PoC sang máy thử
 
 | Đầu vào | Yêu cầu |
 | --- | --- |
-| **Snapshot nguồn** | PostgreSQL dump, archive RustFS và audit, image PoC, số liệu đối soát và `SHA256SUMS`. Snapshot cũng giữ Redis và worker-state cùng kỳ. Bản thử khởi tạo Redis mới để các việc cũ không phát lại. |
+| **Snapshot nguồn** | PostgreSQL dump, archive RustFS và audit, image PoC, số liệu đối soát và `SHA256SUMS`. Chọn snapshot được xuất sau những thay đổi cuối cùng trên máy local. Snapshot lưu riêng Redis và worker-state cùng kỳ. Bộ Compose này dùng Redis mới và chưa khởi động worker. |
 | **Cấu hình môi trường** | Tạo `.env` từ [mẫu](.env.example). Lấy khóa và mật khẩu từ kho bí mật của System. Cần giữ `ENCRYPTION_KEYS` nguồn để mở dữ liệu đã mã hóa. Đối chiếu thông tin xác thực RustFS theo môi trường. |
 | **Đầu nhận thử nghiệm** | Đội TI/SIEM cung cấp endpoint hoặc collector, cơ chế xác thực và nơi tra cứu kết quả. System xác nhận đường mạng của VM trước khi mở API. Snapshot có thể chứa endpoint tích hợp từ môi trường nguồn. |
 
@@ -27,13 +27,14 @@ cd oasm-vm-ti-siem
 cp .env.example .env
 ```
 
-Điền `.env`, sau đó chạy lệnh sau với đường dẫn đến snapshot đã xuất:
+Điền `.env`. Dùng tùy chọn `--check` để xác minh các file bàn giao và cấu hình Compose trước khi phục hồi. Bước này chỉ đọc file.
 
 ```bash
+bash deploy-test.sh --check /path/to/oasm-snapshot-YYYYMMDDTHHMMSSZ
 bash deploy-test.sh /path/to/oasm-snapshot-YYYYMMDDTHHMMSSZ
 ```
 
-Script kiểm tra checksum, nạp image, khôi phục database và đối soát số dòng trước khi mở giao diện. File và bằng chứng cũ được phục hồi từ RustFS và audit archive. Giao diện hiển thị thương hiệu **NCS OASM** khi khởi động.
+Script kiểm tra checksum, nạp image, khôi phục database và đối soát số dòng trước khi mở giao diện. Snapshot chứa toàn bộ PostgreSQL, gồm các workflow, quy tắc scope, profile công cụ và cấu hình tích hợp đã lưu. Snapshot xuất bằng script hiện tại có thêm số đếm của các bảng cấu hình trong `counts.txt`. File và bằng chứng cũ được phục hồi từ RustFS và audit archive. Bộ cài kiểm tra API qua console trước khi báo sẵn sàng.
 
 Để kiểm tra riêng dữ liệu trước khi mở API, dùng `bash restore-data.sh /path/to/snapshot`, rồi chạy `docker compose --env-file .env up -d console` khi System xác nhận đường mạng. Sau lần phục hồi đầu tiên, dùng `up -d console` để mở lại stack.
 
@@ -54,7 +55,7 @@ docker compose --env-file .env ps -a
 curl --fail --silent --show-error http://localhost:6276/api/health
 ```
 
-Giao diện quản trị nghe ở loopback. Truy cập tại `http://localhost:6276` trên máy chạy Docker hoặc qua SSH tunnel theo [hướng dẫn Linux](DOCKER-ENGINE.md). Đăng nhập, đối chiếu 128 Target cùng số project, job và finding trong `counts.txt`. Mở một finding cũ và tải một file đã biết để xác nhận dữ liệu và object storage.
+Giao diện quản trị nghe ở loopback. Truy cập tại `http://localhost:6276` trên máy chạy Docker hoặc qua SSH tunnel theo [hướng dẫn Linux](DOCKER-ENGINE.md). Đăng nhập, đối chiếu 128 Target cùng số project, job và finding trong `counts.txt`. Mở một finding cũ, tải một file đã biết và so sánh một workflow cùng profile đã chỉnh trên máy local.
 
 | Luồng | Cách thử | Điều kiện đạt |
 | --- | --- | --- |
