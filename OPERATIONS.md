@@ -15,28 +15,34 @@
 Chạy lệnh trong thư mục repo NCS OASM.
 
 ```bash
-docker compose --env-file .env ps -a
-docker compose --env-file .env logs --tail 100 core-api console postgres
+bash compose.sh ps -a
+bash compose.sh logs --tail 100 core-api console postgres
 curl --fail --silent --show-error http://localhost:6276/api/health
 ```
 
-Dịch vụ `migration` chạy theo lượt và có thể hiện `Exited (0)` sau khi hoàn tất. Nếu console tải chậm hoặc không mở được, xem log `core-api`, `migration` và `postgres` theo thời điểm lỗi.
+Dịch vụ `migration` chạy theo lượt và có thể hiện `Exited (0)` sau khi hoàn tất. Các dịch vụ chạy dài hạn dùng `restart: unless-stopped` để mở lại khi Docker khởi động. Nếu console tải chậm hoặc không mở được, xem log `core-api`, `migration` và `postgres` theo thời điểm lỗi.
 
-Dừng hoặc mở lại stack bằng các lệnh sau. Lệnh `stop` giữ volume.
+Dừng hoặc mở lại stack bằng các lệnh sau. Lệnh `stop` giữ volume và để dịch vụ ở trạng thái dừng cho tới khi bạn mở lại.
 
 ```bash
-docker compose --env-file .env stop
-docker compose --env-file .env up -d --wait --wait-timeout 240 console
+bash compose.sh stop
+bash compose.sh up -d --wait --wait-timeout 240 console
 ```
+
+Để áp dụng chính sách khởi động lại cho một instance đã cài, cập nhật repo rồi chạy `bash compose.sh up -d --wait --wait-timeout 240 console` với cùng project name và file `.env`.
 
 Khi cập nhật logo trên một instance đã cài bằng phiên bản cũ, chạy lệnh SQL với PostgreSQL đang hoạt động, rồi tạo lại console.
 
 ```bash
 git pull --ff-only
-docker compose --env-file .env exec -T postgres \
+bash compose.sh exec -T postgres \
   psql -X -v ON_ERROR_STOP=1 -U postgres -d open_asm < branding/apply.sql
-docker compose --env-file .env up -d --no-deps --force-recreate console
+bash compose.sh up -d --no-deps --force-recreate console
 ```
+
+## Sao lưu
+
+Xuất PostgreSQL, RustFS, audit và image của instance theo [hướng dẫn sao lưu](RESTORE.md#xuất-snapshot-từ-bản-cài-docker-compose).
 
 ## Kiểm tra tích hợp
 

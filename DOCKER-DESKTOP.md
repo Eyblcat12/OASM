@@ -22,4 +22,4 @@ Sau khi cài, mở [NCS OASM trên máy local](http://localhost:6276).
 
 ## Xem log
 
-Trong Docker Desktop, vào **Containers → oasm-ti-siem-test**, mở container cần kiểm tra rồi chọn **Logs**. Hoặc dùng [các lệnh vận hành trên CLI](OPERATIONS.md#quản-lý-dịch-vụ).
+Trong Docker Desktop, vào **Containers** rồi chọn project Compose tương ứng. Tên mặc định là **oasm-ti-siem-test**. Mở container cần kiểm tra và chọn **Logs**. Hoặc dùng [các lệnh vận hành trên CLI](OPERATIONS.md#quản-lý-dịch-vụ).

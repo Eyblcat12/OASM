@@ -13,7 +13,7 @@ fi
 snapshot=$(cd -- "$1" && pwd)
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 bash restore-data.sh "$snapshot"
-docker compose --env-file .env up -d --wait --wait-timeout 240 console
-docker compose --env-file .env exec -T console wget -qO- http://127.0.0.1/api/health >/dev/null
-docker compose --env-file .env ps -a
+bash compose.sh up -d --wait --wait-timeout 240 console
+bash compose.sh exec -T console wget -qO- http://127.0.0.1/api/health >/dev/null
+bash compose.sh ps -a
 printf 'Console and API are ready at http://localhost:6276.\n'

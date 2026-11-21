@@ -18,6 +18,7 @@ services:
   console:
     image: local/oasm-console:poc-2e12e49
     pull_policy: never
+    restart: unless-stopped
     ports:
       - "127.0.0.1:6276:80"
     volumes:
@@ -32,6 +33,8 @@ services:
   core-api:
     image: local/oasm-api:poc-2e12e49
     pull_policy: never
+    restart: unless-stopped
+    init: true
     environment:
       <<: *database
       PORT: "6277"
@@ -80,6 +83,7 @@ services:
 
   postgres:
     image: postgres@sha256:2ea8630df176ad090ec92136dee850397c5af8781e4bcf2e4162593691c61bbc
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
@@ -87,7 +91,7 @@ services:
     volumes:
       - pgdata18:/var/lib/postgresql
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "open_asm"]
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "open_asm"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -95,6 +99,7 @@ services:
 
   redis:
     image: redis@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
+    restart: unless-stopped
     environment:
       REDISCLI_AUTH: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
@@ -109,6 +114,7 @@ services:
 
   rustfs:
     image: rustfs/rustfs@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
+    restart: unless-stopped
     environment:
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?set RUSTFS_ACCESS_KEY}
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?set RUSTFS_SECRET_KEY}
@@ -119,6 +125,7 @@ services:
 
   geo-ip-database:
     image: ghcr.io/oasm-platform/dbip@sha256:e4e92a7958f9b9861c1ae9206fe9d96343aa270fbf7e99c0a48348a0564d2e8d
+    restart: unless-stopped
     platform: linux/amd64
     volumes:
       - geoip-data:/app/data

@@ -51,13 +51,14 @@ cp .env.example .env
 | `BETTER_AUTH_SECRET`, `ENCRYPTION_KEYS` | Hai giá trị ngẫu nhiên độc lập, mỗi giá trị ít nhất 32 ký tự. Lưu `ENCRYPTION_KEYS` cùng hồ sơ khôi phục để đọc dữ liệu đã mã hóa. |
 | `RUSTFS_ACCESS_KEY`, `RUSTFS_SECRET_KEY` | Một cặp thông tin xác thực riêng cho RustFS. |
 | `OASM_CLOUD_APIKEY` | Compose yêu cầu giá trị khác rỗng. Với bản cài cục bộ, dùng một giá trị ngẫu nhiên dành riêng cho instance. |
+| `COMPOSE_PROJECT_NAME` | Tùy chọn. Mặc định là `oasm-ti-siem-test`. Giữ cùng tên ở các lần mở lại để sử dụng đúng volume. |
 
 ## 4. Khởi động và tạo quản trị viên
 
 ```bash
-docker compose --env-file .env config --quiet
-docker compose --env-file .env up -d --wait --wait-timeout 240 console
-docker compose --env-file .env exec -T postgres \
+bash compose.sh config --quiet
+bash compose.sh up -d --wait --wait-timeout 240 console
+bash compose.sh exec -T postgres \
   psql -X -v ON_ERROR_STOP=1 -U postgres -d open_asm < branding/apply.sql
 curl --fail --silent --show-error http://localhost:6276/api/health
 ```
