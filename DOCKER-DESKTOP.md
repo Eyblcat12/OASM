@@ -1,37 +1,25 @@
-# Triển khai trên Docker Desktop
+# Docker Desktop trên Windows
 
-Dùng cho môi trường thử nghiệm Windows x86-64. Cần Docker Desktop chạy Linux containers, Docker Compose v2 và Git Bash để chạy script phục hồi. [Cài Docker Desktop trên Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
+Dùng Windows x86-64 với Docker Desktop ở chế độ Linux containers. Cài Git Bash để chạy các lệnh Bash trong tài liệu. [Docker Desktop trên Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
 
 ## Kiểm tra Docker
 
-Mở Docker Desktop, chờ engine sẵn sàng và chạy:
+Mở Docker Desktop và chờ engine sẵn sàng. Trong Git Bash, chạy các lệnh sau.
 
 ```bash
 docker info --format '{{.OSType}}/{{.Architecture}}'
 docker compose version
 ```
 
-Kiểm tra engine báo Linux trên x86-64 và Compose v2. Nếu CLI báo lỗi named pipe, kiểm tra trạng thái Docker Desktop và Docker context. Nếu cổng 6276 đang được bản PoC khác sử dụng, chuyển sang máy thử riêng hoặc giải phóng cổng trong cửa sổ bảo trì.
+Nếu CLI báo lỗi named pipe, kiểm tra Docker Desktop đang chạy và context hiện tại trỏ đúng Linux engine. Nếu cổng `6276` đã được dùng, cài vào một môi trường khác hoặc giải phóng cổng trước khi khởi động.
 
-## Phục hồi và mở console
+## Chọn phương thức cài đặt
 
-Trong Git Bash:
+- [Cài mới từ mã nguồn](INSTALL.md) để tạo instance trống.
+- [Khôi phục từ snapshot](RESTORE.md) để mang theo dữ liệu cũ. Trong Git Bash, dùng đường dẫn dạng `/e/private-backup/oasm-snapshot-YYYYMMDDTHHMMSSZ` cho thư mục trên ổ E.
 
-```bash
-git clone https://github.com/Eyblcat12/OASM.git oasm-vm-ti-siem
-cd oasm-vm-ti-siem
-cp .env.example .env
-```
+Sau khi cài, mở [NCS OASM trên máy local](http://localhost:6276).
 
-Điền `.env` theo [yêu cầu bàn giao](README.md#chuẩn-bị-bàn-giao) và bảo vệ file bằng quyền truy cập Windows. Khi đã nhận snapshot và xác nhận đường mạng thử nghiệm, chạy lệnh dưới đây. Git Bash biểu diễn ổ E bằng `/e`.
+## Xem log
 
-```bash
-bash deploy-test.sh --check /e/private-backup/oasm-snapshot-YYYYMMDDTHHMMSSZ
-bash deploy-test.sh /e/private-backup/oasm-snapshot-YYYYMMDDTHHMMSSZ
-```
-
-Mở `http://localhost:6276` và xác nhận nhận diện **NCS OASM**. Đăng nhập, đối chiếu dữ liệu và thực hiện các phép thử TI/SIEM theo [README](README.md#kiểm-tra-sau-triển-khai).
-
-## Xem log và mở lại stack
-
-Trong Docker Desktop, vào **Containers → oasm-ti-siem-test → container → Logs**. Khi stack đã có dữ liệu, dùng `docker compose --env-file .env up -d console` để mở lại. Nếu cần xuất snapshot từ máy PoC gốc, dùng [hướng dẫn xuất trên Windows](README.md#xuất-snapshot-nguồn-trên-windows).
+Trong Docker Desktop, vào **Containers → oasm-ti-siem-test**, mở container cần kiểm tra rồi chọn **Logs**. Hoặc dùng [các lệnh vận hành trên CLI](OPERATIONS.md#quản-lý-dịch-vụ).
