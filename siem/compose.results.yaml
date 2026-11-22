@@ -1,0 +1,33 @@
+name: oasm-siem-results
+
+services:
+  results:
+    image: local/oasm-api:poc-2e12e49
+    pull_policy: never
+    entrypoint: ["node", "/collector/collect-results.cjs"]
+    command: []
+    user: "${OASM_COLLECTOR_UID:?Set the host UID}:${OASM_COLLECTOR_GID:?Set the host GID}"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    environment:
+      OASM_BASE_URL: ${OASM_BASE_URL:-http://core-api:6277}
+      OASM_SOURCE_HOST: ${OASM_SOURCE_HOST:?Set the name of the Docker host}
+    volumes:
+      - ./collect-results.cjs:/collector/collect-results.cjs:ro
+      - ${OASM_SIEM_DIR:?Set the private collector directory}/private/oasm-session.json:/run/secrets/sync-connection:ro
+      - ${OASM_SIEM_DIR:?Set the private collector directory}/state:/state
+      - ${OASM_SIEM_DIR:?Set the private collector directory}/out:/out
+    networks: [oasm]
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+networks:
+  oasm:
+    external: true
+    name: ${OASM_DOCKER_NETWORK:-oasm-ti-siem-test_default}
