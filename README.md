@@ -22,6 +22,7 @@ cd ncs-oasm
 | Chạy trên Linux hoặc VM | [Docker Engine](DOCKER-ENGINE.md) |
 | Chạy trên Windows | [Docker Desktop](DOCKER-DESKTOP.md) |
 | Dùng giao diện, kiểm tra dịch vụ và thử TI/SIEM | [Vận hành](OPERATIONS.md) |
+| Thu log và sự kiện vào Elastic, Wazuh hoặc QRadar | [Gửi dữ liệu về SIEM](SIEM.md) |
 
 ## Phiên bản và giấy phép
 
