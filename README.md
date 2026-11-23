@@ -17,6 +17,7 @@ cd ncs-oasm
 
 | Bạn muốn | Tài liệu |
 | --- | --- |
+| Dựng Open ASM gốc, chuyển dữ liệu, đổi logo và kết nối SIEM | [Deployment từ đầu tới cuối trên Linux và Windows](DEPLOYMENT.md) |
 | Chọn quy trình cài đặt và triển khai trên Linux hoặc Windows | [Hướng dẫn triển khai NCS OASM](INSTALL.md) |
 | Chuyển tài khoản, target, kết quả và cấu hình đã có | [Khôi phục snapshot từng bước](RESTORE.md) |
 | Nhập dữ liệu snapshot vào bộ Compose Open ASM gốc | [Chuyển dữ liệu vào Open ASM upstream](MIGRATE-UPSTREAM.md) |

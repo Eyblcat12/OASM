@@ -2,7 +2,7 @@ name: oasm-siem-results
 
 services:
   results:
-    image: local/oasm-api:poc-2e12e49
+    image: ${OASM_RESULTS_IMAGE:-local/oasm-api:poc-2e12e49}
     pull_policy: never
     entrypoint: ["node", "/collector/collect-results.cjs"]
     command: []

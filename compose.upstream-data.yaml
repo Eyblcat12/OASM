@@ -1,4 +1,8 @@
 services:
+  console:
+    ports: !override
+      - "127.0.0.1:6276:80"
+
   core-api:
     environment:
       AUDIT_ARCHIVE_DIR: /app/audit-archive

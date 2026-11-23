@@ -4,7 +4,7 @@ Dùng quy trình này để nhập PostgreSQL, file RustFS và audit archive t�
 
 ## Chuẩn bị máy đích
 
-1. Chuẩn bị **VM Linux hoặc Docker daemon riêng** với Docker Compose và Python 3. Compose upstream có các container đặt tên cố định, nên chọn máy đích riêng nếu máy cũ vẫn chạy OASM. [Docker trên Ubuntu](DOCKER-ENGINE.md)
+1. Chuẩn bị **VM Linux hoặc Docker daemon riêng** với Docker Compose từ 2.24.4 và Python 3. Compose upstream có các container đặt tên cố định, nên chọn máy đích riêng nếu máy cũ vẫn chạy OASM. [Docker trên Ubuntu](DOCKER-ENGINE.md)
 2. Đặt repo triển khai Open ASM gốc và `.env` của máy đích trong cùng thư mục. Chọn phiên bản API/console tương thích với schema snapshot. Snapshot PoC này xuất từ Open ASM commit `2e12e49`. Ưu tiên xác nhận dữ liệu với phiên bản tương thích trước khi nâng cấp. [Mã nguồn upstream tại commit đã test](https://github.com/oasm-platform/open-asm/tree/2e12e49e8ab5420746d9faf43fd48f57a923db58)
 3. Giữ đúng `ENCRYPTION_KEYS` của nguồn để đọc dữ liệu đã mã hóa. Kiểm tra thông tin xác thực RustFS và `BASE_URL` của máy đích. Chuyển snapshot và cấu hình qua kênh có phân quyền.
 4. Chọn tên project Compose mới, tập trung vào dữ liệu đã lưu. Giữ nguyên stack đang hoạt động để đối chiếu cho tới khi nghiệm thu máy đích.
@@ -36,7 +36,7 @@ bash "$NCS/migrate-upstream-data.sh" --check "$SNAP" "$UPSTREAM" "$PROJECT" &&
 
 ## Mở console và đối chiếu
 
-Khi script in `Upstream data imported and counts matched`, dùng cùng project, `.env` và overlay audit để mở console upstream. Các lệnh này chọn service `console` và những phụ thuộc của nó trong bộ Compose gốc.
+Khi script in `Upstream data imported and counts matched`, dùng cùng project, `.env` và overlay để mở console upstream. Overlay gắn audit archive và giới hạn console ở `127.0.0.1:6276`. Các lệnh này chọn service `console` và những phụ thuộc của nó trong bộ Compose gốc.
 
 ```bash
 upstream_stack=(docker compose --project-directory "$UPSTREAM" --env-file "$UPSTREAM/.env"

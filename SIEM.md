@@ -120,6 +120,8 @@ Tần suất thực tế gồm khoảng nghỉ trên cộng thời gian đọc v
 
 Chạy từ thư mục repo NCS OASM với tài khoản shell thông thường. Trên Windows chạy trong WSL đã bật Docker Desktop integration. Nếu đã đặt tên project hoặc mạng riêng, đổi `OASM_DOCKER_NETWORK` theo kết quả `docker network ls`.
 
+Mặc định collector dùng image `local/oasm-api:poc-2e12e49`. Với Open ASM upstream, đặt `OASM_RESULTS_IMAGE` thành đúng tag image API đã cài, rồi kiểm tra `OASM_DOCKER_NETWORK` và tên service API theo stack thực tế. [Hướng dẫn triển khai upstream](DEPLOYMENT.md)
+
 ```bash
 export OASM_REPO_ROOT="$(pwd -P)"
 export OASM_SIEM_DIR="$HOME/oasm-siem-collector"
