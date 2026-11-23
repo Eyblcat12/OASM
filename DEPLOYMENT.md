@@ -9,7 +9,7 @@ Quy trình này dùng **Compose của Open ASM gốc** và bộ script NCS OASM 
 | Snapshot PoC ngày 21/11 | Dữ liệu được tạo từ API và console dựa trên Open ASM [`2e12e49`](https://github.com/oasm-platform/open-asm/tree/2e12e49e8ab5420746d9faf43fd48f57a923db58). Importer đã đối chiếu 128 target, 163 dịch vụ, 14 findings và 14.218 bản ghi URL lịch sử trong PostgreSQL thử nghiệm. |
 | Đầu nhận | Elastic, Wazuh hoặc QRadar theo môi trường của System. Phần dưới đây dùng Elastic làm ví dụ kiểm tra alert. |
 
-Tài liệu này hoàn tất luồng dựng console, chuyển dữ liệu và chuyển tiếp sự kiện. Nghiệm thu worker quét và cảnh báo sinh từ một lượt quét mới là mốc riêng. Tài liệu OASM dùng repo `oasm-docker` để triển khai production và yêu cầu sao lưu khóa mã hóa. [Tài liệu Deployment chính thức](https://docs.oasm.io/deployment)
+Quy trình gồm console, dữ liệu, **worker gốc**, collector và đối soát kết quả trên SIEM. Worker phải được khởi động ở bước 5; chỉ mở console chưa đủ để thực thi các job quét. Chạy quét và thử alert là hai bước nghiệm thu riêng sau khi hạ tầng đã sẵn sàng. Tài liệu OASM dùng repo `oasm-docker` để triển khai production và yêu cầu sao lưu khóa mã hóa. [Tài liệu Deployment chính thức](https://docs.oasm.io/deployment)
 
 Chọn một luồng sau khi chuẩn bị Docker, repo và `.env`.
 
@@ -97,7 +97,7 @@ chmod 0600 .env
 | Biến | Cách điền |
 | --- | --- |
 | `IMAGE_TAG` | `v0.13.0` để lặp lại phép thử với snapshot PoC hoặc tag chính thức đã được nhóm nghiệm thu. |
-| `BASE_URL` | Khi thử local dùng `http://localhost:6276`. Khi dùng reverse proxy, nhập origin HTTPS mà người dùng mở. |
+| `BASE_URL` | Bắt buộc điền trong quy trình này. Khi thử local dùng `http://localhost:6276`. Khi dùng reverse proxy, nhập origin HTTPS mà người dùng mở, không thêm đường dẫn hoặc dấu `/` cuối. Để trống có thể gây `INVALID_ORIGIN` khi collector đăng nhập. |
 | `PORT` | Giữ `6277` cho API nội bộ của bộ Compose đã pin. Nginx upstream trỏ tới `core-api:6277`. |
 | `POSTGRES_HOST`, `POSTGRES_USERNAME`, `POSTGRES_DB` | Dùng giá trị mẫu `postgres`, `postgres`, `open_asm` nếu dùng DB trong stack. Điền `POSTGRES_PASSWORD` riêng. |
 | `REDIS_PASSWORD`, `REDIS_URL` | Tạo mật khẩu hex. Trong URL `redis://:<mật-khẩu>@redis:6379/0`, dùng cùng mật khẩu. |
@@ -106,6 +106,8 @@ chmod 0600 .env
 | `ENCRYPTION_KEYS` | Cài mới dùng khóa ngẫu nhiên. Khôi phục dùng đúng khóa nguồn và giữ thứ tự nếu có nhiều khóa. |
 | `OASM_CLOUD_APIKEY` | Điền giá trị theo cấu hình của môi trường; với PoC local, thay giá trị mẫu bằng khóa riêng của instance. |
 | `TRUSTED_PROXIES` | Để trống khi mở trực tiếp. Nếu có reverse proxy, điền theo proxy tin cậy thực tế. |
+| `DOCKER_GID` | Chạy `stat -c '%g' /var/run/docker.sock` trên Docker host và điền kết quả. Worker cần GID này để dùng Docker socket. |
+| `WORKER_REPLICAS` | Bắt đầu với `1` cho PoC, tăng sau khi đo CPU/RAM và xác nhận ngân sách connector. |
 
 Giữ file `.env` và khóa ở nơi lưu bí mật của môi trường. [Cấu hình và khóa mã hóa theo tài liệu OASM](https://docs.oasm.io/deployment#encryption-keys)
 
@@ -160,56 +162,238 @@ Overlay giữ console tại `127.0.0.1:6276`, gắn volume audit archive và yê
 ssh -N -L 6276:127.0.0.1:6276 user@vm-host
 ```
 
-### 5. Nghiệm thu dữ liệu và đổi logo
+### 5. Bật worker gốc, nghiệm thu dữ liệu và đổi logo
+
+Sau khi API healthy, khởi động một worker của upstream. Lệnh áp dụng cho cả cài mới và restore, trên Linux hoặc Ubuntu WSL có Docker integration.
+
+```bash
+export DOCKER_GID="$(stat -c '%g' /var/run/docker.sock)"
+export WORKER_REPLICAS=1
+"${upstream_stack[@]}" config --services
+"${upstream_stack[@]}" pull oasm-worker &&
+  "${upstream_stack[@]}" up -d --scale oasm-worker=1 oasm-worker
+"${upstream_stack[@]}" ps -a oasm-worker
+"${upstream_stack[@]}" logs --since 5m --tail 100 oasm-worker
+```
+
+Lưu cùng giá trị `DOCKER_GID` và `WORKER_REPLICAS=1` trong `.env` để lần vận hành sau không phụ thuộc biến terminal. `config --services` phải có `oasm-worker`; `ps` phải có container Up; trang **Workers** phải có worker Online. Worker chạy thường trực và tạo connector container khi nhận job. Các connector có thể được tái sử dụng hoặc xóa sau job theo pool của worker.
+
+Nếu `config --services` không có worker, kiểm tra đang dùng đúng `docker-compose.yml` upstream và hai file trong biến `upstream_stack`. Có image worker trong Docker chưa đồng nghĩa service đã được tạo. Nếu worker không Online, đọc log trước khi chạy thử job; xem kiểm tra mạng `core-api:16276`, khóa đăng ký và quyền Docker socket. Không xóa token/state khi chưa xác định nguyên nhân.
 
 1. **Cài mới:** tạo tài khoản admin từ màn hình đầu tiên. **Sau restore:** đăng nhập bằng tài khoản đã lưu trong snapshot.
 2. **Cài mới:** xác nhận workspace mới mở được. **Sau restore:** chọn workspace nguồn và so **Targets**, **Assets**, **Services** và **Vulnerabilities** với `counts.txt`. Mở một bản ghi URL lịch sử, một finding và một workflow cũ. Tải thử một file đã lưu để kiểm tra RustFS.
 3. Vào **Admin → Brand** (`/admin/brand`), điền tên hiển thị và tải icon. Có thể dùng [icon NCS](branding/ncs-oasm-icon.png). Đăng nhập lại và kiểm tra logo ở giao diện. [Thương hiệu và logo trong OASM](https://docs.oasm.io/brand-name-and-logo)
 
-### 6. Thu log, findings và kiểm tra alert
+4. Khi được phép kiểm thử, chọn một mục tiêu nhỏ và một workflow phù hợp. Xác nhận job được nhận, connector thực thi, kết quả được lưu và job kết thúc không có cảnh báo ngắt sớm. `success=true` kèm `connector disconnected before Done` chỉ là kết quả một phần. Số findings bằng 0 không đủ chứng minh mục tiêu không có lỗ hổng. Ghi cấu hình, phạm vi, template, thời gian và lỗi bỏ qua vào biên bản.
 
-Để cấu hình một lần cho Elastic, dùng [SIEM quickstart](SIEM-QUICKSTART.md). Bộ cấu hình tự nhận diện image API, chọn workspace và tạo hai collector, với tài khoản OASM riêng và khóa ghi Elastic. Phần bên dưới phục vụ cấu hình thủ công hoặc tùy chỉnh đầu nhận.
+### 6. Kết nối Elastic và kiểm tra dữ liệu, alert
 
-Hai đầu vào SIEM đọc độc lập. **Vector** đọc stdout/stderr của Docker. **Collector kết quả** đọc audit, findings và discovery đã lưu qua API OASM. Làm theo các bước tạo cấu hình, cấp quyền và kiểm thử trong [hướng dẫn SIEM](SIEM.md). Với deployment upstream trong file này, chú ý các giá trị sau.
+Thực hiện phần này trên Docker host OASM. Trên Windows, các lệnh Bash chạy trong Ubuntu WSL có Docker Desktop integration. Elastic có thể nằm trên host khác. [Cấu hình một lần](SIEM-QUICKSTART.md) · [Đầu nhận Wazuh, QRadar và cấu hình thủ công](SIEM.md)
 
-| Cấu hình | Giá trị cần dùng |
+#### 6.1. Chọn địa chỉ và kiểm tra origin
+
+| Giá trị | Ví dụ | Công dụng |
+| --- | --- | --- |
+| Origin console / `BASE_URL` | `http://localhost:6276` | Địa chỉ trình duyệt, dùng khi đăng nhập OASM. |
+| API nội bộ / `OASM_BASE_URL` | `http://core-api:6277` | Collector kết nối API trong mạng Docker `oasm_net`. |
+| Elasticsearch | `http://<SIEM-IP>:9200` hoặc URL HTTPS do quản trị cấp | Đầu nhận dữ liệu. |
+| Kibana | `http://<SIEM-IP>:5601` hoặc URL HTTPS do quản trị cấp | Giao diện tra cứu, tạo key và alert. |
+| RustFS | `http://rustfs:9000` | Object storage nội bộ OASM, không phải đầu nhận Elastic. |
+
+Kiểm tra `BASE_URL` trong container API đang chạy; lệnh chỉ in địa chỉ:
+
+```bash
+docker exec oasm-api node -p 'process.env.BASE_URL || "(unset)"'
+```
+
+Nếu trống hoặc sai, sửa `BASE_URL` trong `$UPSTREAM/.env`. Dùng đúng origin thực tế, ví dụ `BASE_URL=http://localhost:6276` cho PoC qua trình duyệt local/SSH tunnel. Sau đó áp dụng khi không có job đang thực thi vì API sẽ gián đoạn ngắn:
+
+```bash
+"${upstream_stack[@]}" up -d --no-deps --force-recreate --wait --wait-timeout 180 core-api
+docker exec oasm-api node -p 'process.env.BASE_URL'
+```
+
+`restart` không nạp giá trị `.env` mới. Không đổi `ENCRYPTION_KEYS` hoặc mật khẩu database để xử lý lỗi origin. `localhost` và `127.0.0.1` là hai origin khác nhau. Khi đổi sang HTTPS production, cập nhật cả BASE_URL, cấu hình reverse proxy và origin trong tài khoản collector.
+
+#### 6.2. Chuẩn bị đường mạng Elasticsearch
+
+Từ Docker host OASM thử endpoint thật, dùng `https://` khi đầu nhận bật TLS:
+
+```bash
+curl --connect-timeout 5 --max-time 10 -sS -o /dev/null \
+  -w '%{http_code}\n' "http://<SIEM-IP>:9200"
+```
+
+HTTP `401` cho thấy endpoint trả lời và yêu cầu xác thực; chưa chứng minh API key có quyền ghi. HTTP `200` cho thấy endpoint trả lời thành công. Timeout hoặc connection refused cần kiểm tra listener, route và firewall trước. Kết nối từ host chỉ là bước đầu; kết quả ghi thật mới xác nhận đường đi từ container Vector.
+
+Không nhập `localhost` làm endpoint của Elastic ở host khác: với Vector đó là loopback của container. Nếu OASM và Elastic cùng Docker host, dùng DNS và network chung đã cấu hình hoặc địa chỉ host truy cập được từ container. Với Docker Desktop, `host.docker.internal` là một lựa chọn cần kiểm tra trong môi trường thực tế. Với Linux Engine, không mặc định tên này có sẵn.
+
+**Trường hợp PoC: Ubuntu VMware gửi tới Elastic trên Windows.** Ví dụ VM NAT có IP `192.168.44.159`, Windows VMnet8 có IP `192.168.44.1`. Đây là địa chỉ minh họa, phải thay theo `ip -4 addr` trên VM và `ipconfig` trên Windows. Nếu Docker Desktop chỉ publish Elastic tại `127.0.0.1:9200`, VM chưa thể truy cập qua VMnet8.
+
+Trên PowerShell Windows kiểm tra:
+
+```powershell
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
+Get-NetTCPConnection -LocalPort 9200 -State Listen
+netsh interface portproxy show v4tov4
+```
+
+Nếu cần giữ listener Elastic trên loopback, chuyển tiếp riêng cổng VMnet8 và giới hạn firewall cho VM. Chạy **PowerShell bằng Run as Administrator**, thay hai IP đúng môi trường:
+
+```powershell
+$ElasticHostIp = "192.168.44.1"
+$OasmVmIp = "192.168.44.159"
+netsh interface portproxy add v4tov4 listenaddress=$ElasticHostIp listenport=9200 connectaddress=127.0.0.1 connectport=9200
+New-NetFirewallRule -DisplayName "OASM VM to Elasticsearch" -Direction Inbound -Action Allow -Protocol TCP -LocalAddress $ElasticHostIp -LocalPort 9200 -RemoteAddress $OasmVmIp
+```
+
+Kiểm tra lại bằng curl từ VM tới `http://192.168.44.1:9200`. Không cần chuyển tiếp Kibana để collector ghi dữ liệu. Dùng IP VM ổn định hoặc cập nhật firewall khi DHCP đổi IP. Đây là phương án lab trên máy Windows luôn bật; production dùng endpoint SIEM ổn định, mạng riêng và HTTPS theo cấu hình hệ thống. Portproxy chuyển tiếp TCP, không tự thêm mã hóa TLS.
+
+Khi bỏ đường chuyển tiếp lab, dùng PowerShell administrator với cùng `$ElasticHostIp`:
+
+```powershell
+netsh interface portproxy delete v4tov4 listenaddress=$ElasticHostIp listenport=9200
+Remove-NetFirewallRule -DisplayName "OASM VM to Elasticsearch"
+```
+
+Nếu Elastic nằm trong Docker Engine riêng của WSL thay vì Docker Desktop, kiểm tra listener và đường chuyển tiếp WSL trước; không áp dụng giả định Windows loopback đã có Elastic.
+
+#### 6.3. Tạo tài khoản và API key
+
+Tài khoản collector là tài khoản **OASM có thật**, đăng nhập được và có quyền đọc workspace, audit, assets và vulnerabilities. Sau restore dùng tài khoản có trong snapshot; cài mới tạo tài khoản theo chính sách của instance. Tên project Docker như `oasm-upstream-restore` khác tên project/workspace trong giao diện. Project Docker chỉ dùng chữ thường, số, `_`, `-`, bắt đầu bằng chữ thường hoặc số.
+
+Trong Kibana → **Dev Tools → Console**, đăng nhập bằng tài khoản có quyền tạo API key và cấp quyền ghi, chạy:
+
+```http
+POST /_security/api_key
+{
+  "name": "oasm-siem-writer",
+  "expiration": "7d",
+  "role_descriptors": {
+    "oasm_writer": {
+      "indices": [{
+        "names": [
+          "logs-oasm.docker-poc", "logs-oasm.audit-poc",
+          "logs-oasm.finding-poc", "logs-oasm.discovery-poc"
+        ],
+        "privileges": ["auto_configure", "create_doc"]
+      }]
+    }
+  }
+}
+```
+
+Lưu giá trị **`encoded`** trả về vào nơi quản lý bí mật và nhập trực tiếp vào setup. Không thêm tiền tố `ApiKey ` vào ô hỏi. Key mẫu hết hạn sau 7 ngày; production cần quy định thời hạn và lịch thay key. Quyền thực tế bị giới hạn bởi quyền của tài khoản tạo key. [API key Elasticsearch](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-create-api-key)
+
+#### 6.4. Cấu hình và bật collector
+
+```bash
+git -C "$NCS" pull --ff-only origin main
+python3 "$NCS/siem/setup-elastic.py"
+```
+
+| Câu hỏi | Giá trị |
 | --- | --- |
-| Docker project trong `vector.yaml` | Dùng giá trị của `PROJECT`, mặc định ví dụ là `oasm-upstream-restore`. |
-| `OASM_DOCKER_NETWORK` | `oasm_net` với Compose upstream `56dc2c6`. Kiểm tra `docker network ls` nếu System đã đổi mạng. |
-| `OASM_BASE_URL` | `http://core-api:6277` từ trong mạng Docker, theo biến `PORT` của API. |
-| `OASM_RESULTS_IMAGE` | Đúng image API đang chạy, ví dụ `oasm/oasm-api:v0.13.0`. |
-| Endpoint Elastic | URL Elasticsearch do System cấp. Kibana dùng để tạo data view và rule. |
+| OASM Compose project | Giá trị `$PROJECT`; sau restore mặc định `oasm-upstream-restore`, cài mới ví dụ `oasm-upstream-new`. |
+| OASM Docker network | `oasm_net` nếu giữ upstream. |
+| OASM browser origin | Giống BASE_URL đã xác nhận, ví dụ `http://localhost:6276`. |
+| OASM internal API origin | `http://core-api:6277`. |
+| Collector account email/password | Tài khoản OASM đã chuẩn bị; mật khẩu nhập không hiển thị. |
+| Workspace number | Chọn workspace chứa dữ liệu cần thu. Một bộ cấu hình chọn một workspace. |
+| Elasticsearch URL | Endpoint vừa kiểm tra ở bước 6.2. |
+| Elasticsearch API key | Chỉ giá trị `encoded` từ bước 6.3. |
 
-Dùng hai cấu hình Vector và Elasticsearch ở [mục 2 và 4 của hướng dẫn SIEM](SIEM.md) để thu log Docker. Để mở collector kết quả trên Open ASM upstream, dùng các biến sau. Vị trí `out` cần trùng thư mục file đầu vào đã gắn vào Vector.
-
-```bash
-export OASM_SIEM_DIR="$HOME/oasm-siem-collector"
-export OASM_SOURCE_HOST="$(hostname)"
-export OASM_COLLECTOR_UID="$(id -u)" OASM_COLLECTOR_GID="$(id -g)"
-export OASM_DOCKER_NETWORK=oasm_net
-export OASM_BASE_URL=http://core-api:6277
-OASM_RESULTS_IMAGE=$("${upstream_stack[@]}" config --images core-api)
-export OASM_RESULTS_IMAGE
-install -d -m 0700 "$OASM_SIEM_DIR/private" "$OASM_SIEM_DIR/state"
-install -d -m 0750 "$OASM_SIEM_DIR/out"
-```
-
-Biến `OASM_RESULTS_IMAGE` lấy từ Compose của máy đang chạy, nên collector dùng cùng tag với API. Chuẩn bị `private/oasm-session.json` với workspace và phiên đọc hợp lệ theo [phần collector kết quả](SIEM.md#chạy-collector-kết-quả). Giữ file ở ngoài repo với quyền `0600`. Sau đó chạy các lệnh bên dưới.
+Bộ cài lưu cấu hình vào `~/oasm-siem-managed`, ngoài Git. `Configuration saved` xác nhận đã lưu và kiểm tra đọc OASM; chưa xác nhận ghi được Elastic. Bật hai service:
 
 ```bash
-results="$NCS/siem/compose.results.yaml"
-docker compose -f "$results" config --quiet
-docker compose -f "$results" up -d
-docker compose -f "$results" logs --tail 30 results
+siem=(docker compose --env-file "$HOME/oasm-siem-managed/collector.env"
+  -f "$HOME/ncs-oasm/siem/compose.elastic.yaml")
+"${siem[@]}" run --rm --no-deps vector validate --no-environment /etc/vector/vector.yaml &&
+  "${siem[@]}" up -d
+"${siem[@]}" ps
+"${siem[@]}" logs --since 5m --tail 100
 ```
 
-Trong Elastic, dùng data view `logs-oasm.finding-poc` với `@timestamp` nếu giữ tên stream của hướng dẫn SIEM. Trong **Rules**, tạo rule **Elasticsearch query** kiểu KQL. Đặt điều kiện số bản ghi lớn hơn 0 trong 5 phút, chạy mỗi phút. Nếu tên stream hoặc namespace khác, chọn đúng data view của production.
+`results` đọc API và ghi NDJSON. `vector` đọc NDJSON cùng stdout/stderr Docker của project OASM, rồi gửi sang Elastic. Cả hai phải Up. Các dòng `Sync complete` và `Discovery synced` chỉ xác nhận bước đọc/ghi cục bộ. Vector validate dùng `--no-environment` và sink healthcheck tắt, nên không thay thế kiểm thử gửi thật. [Chi tiết cấu hình, dữ liệu và quyền](SIEM-QUICKSTART.md)
+
+#### 6.5. Xác nhận trên Kibana
+
+Trên OASM host lấy đúng tên host mà collector gắn vào dữ liệu:
+
+```bash
+grep '^OASM_SOURCE_HOST=' "$HOME/oasm-siem-managed/collector.env"
+```
+
+Trong Kibana → Dev Tools, thay `YOUR-OASM-HOST` bằng giá trị trên, bỏ dấu nháy bao quanh của file env:
+
+```http
+GET /logs-oasm.*-poc/_search
+{
+  "size": 0,
+  "query": {"term": {"host.name": "YOUR-OASM-HOST"}},
+  "aggs": {
+    "datasets": {"terms": {"field": "event.dataset", "size": 10}}
+  }
+}
+```
+
+| Dataset | Nghiệm thu |
+| --- | --- |
+| `oasm.docker` | Có log mới của host đích, đúng container/service và thời gian. |
+| `oasm.audit` | Đối chiếu ID, hành động, thời gian của sự kiện audit với OASM. |
+| `oasm.finding` | Đối chiếu ID finding, mức độ, trạng thái và CVE nếu có. |
+| `oasm.discovery` | Đối chiếu dịch vụ và URL; có dữ liệu discovery không tự chứng minh đã thu đủ cả hai loại. |
+
+Nếu workspace có dữ liệu ở cả bốn nguồn, cần thấy đủ bốn nhóm. Với cài mới chưa có finding hoặc URL, ghi rõ nguồn đang trống; không tạo lỗ hổng trên mục tiêu thật để làm đủ số. Tăng từ 0 lên số bản ghi dương xác nhận có dữ liệu từ host đích. Có đủ bốn nhóm xác nhận bốn đường gửi hoạt động, **chưa chứng minh toàn bộ lịch sử đồng bộ đủ**.
+
+Audit và discovery có ID chống trùng không gắn tên host. Khi chuyển snapshot sang VM rồi nhập vào cùng SIEM cũ, bản ghi trùng có thể giữ tên host nguồn. Đối soát theo `event.id`, workspace và ID tài sản trên toàn stream, không cộng số host VM rồi kết luận mất dữ liệu. Finding hiện tạo phiên bản từ nội dung chuẩn hóa có host, nên số đếm giữa các loại nguồn có thể khác cách chống trùng. Dòng `appended` là số ghi vào file collector, không phải số tài liệu Elastic chấp nhận.
+
+Trong **Discover**, tạo data view `logs-oasm.*-poc`, chọn `@timestamp` và khoảng thời gian bao phủ kết quả cũ. `@timestamp` của audit/finding có thể là thời gian sự kiện nguồn, không phải thời điểm vừa nhập. Với discovery, đọc log `results` để kiểm tra riêng `source=service` và `source=url`. Polling: audit/findings khoảng nghỉ 10 giây, service 30 giây, URL 5 phút, cộng thời gian xử lý. Log Docker thu từ lúc Vector bắt đầu theo dõi. Đây là thu thập liên tục theo polling/stream, cần đo độ trễ thật khi nghiệm thu.
+
+Để thử cập nhật mới, tạo một thay đổi quản trị vô hại được phép trong OASM, ghi lại ID/thời gian sự kiện, rồi tìm trên SIEM. Kiểm tra log mới từ API/worker theo cùng thời điểm. Không cần chạy lại toàn bộ scope để nghiệm thu collector.
+
+#### 6.6. Alert và vận hành collector
+
+Trong Kibana, tạo rule **Elasticsearch query** với data view findings và điều kiện ví dụ:
 
 ```text
 event.dataset: "oasm.finding" and vulnerability.severity: ("high" or "critical")
 ```
 
-Dùng **Test query** để kiểm tra điều kiện trước khi bật. Đối chiếu một finding có sẵn để xác nhận ingestion. Dùng rule thử hoặc dữ liệu giả lập trong môi trường test để xác nhận alert nếu nguồn hiện chỉ có finding mức Info. Kiểm tra alert trong SIEM trước khi nối đầu nhận thông báo của SOC. [Rule Elasticsearch query](https://www.elastic.co/docs/explore-analyze/alerting/alerts/rule-type-es-query)
+Chạy mỗi phút, cửa sổ 5 phút, ngưỡng lớn hơn 0 là cấu hình lab để thử. Finding lịch sử nhập hôm nay có `@timestamp` cũ có thể không khớp cửa sổ này. Dùng Test query và sự kiện thử được phân biệt rõ trong môi trường lab để nghiệm thu alert, tránh lặp thông báo cùng finding; chốt khóa nhóm/chống trùng và cửa sổ theo dữ liệu thực tế trước bàn giao. Ingestion thành công không tự tạo alert hoặc tự gửi thông báo cho SOC. [Elasticsearch query rule](https://www.elastic.co/docs/explore-analyze/alerting/alerts/rule-type-es-query)
+
+Khi mở terminal mới, khai báo lại mảng `siem` ở bước 6.4. Các lệnh thường dùng:
+
+```bash
+"${siem[@]}" ps
+"${siem[@]}" logs --since 10m --tail 150 results vector
+"${siem[@]}" stop
+"${siem[@]}" up -d
+```
+
+`stop` ở đây chỉ dừng collector, không dừng OASM. Giữ `state`, file `out` và volume `oasm-siem_vector-data` qua restart. Theo dõi dung lượng NDJSON và buffer; buffer không lưu vô hạn. Không dùng `down -v` cho môi trường cần giữ dữ liệu.
+
+Thư mục bí mật chứa `private/oasm-account.json` và `private/elastic.json`. Khi đổi mật khẩu/key, cập nhật file tương ứng qua trình soạn thảo trên host, giữ cấu trúc JSON, quyền và thư mục riêng, rồi chạy `"${siem[@]}" up -d --force-recreate`. File Elastic dùng dạng `{"authorization":"ApiKey <encoded>"}`. Nếu đổi endpoint, cập nhật cả `collector.env` và `vector.yaml` đã render, validate lại trước khi recreate Vector. Bộ setup chưa có chức năng ghi đè cấu hình đã tồn tại; không xóa checkpoint chỉ để chạy lại wizard.
+
+#### 6.7. Xử lý lỗi thường gặp
+
+| Hiện tượng | Kiểm tra và xử lý |
+| --- | --- |
+| Docker permission denied | Kiểm tra Docker context, quyền user và GID socket của worker. Đăng nhập lại sau khi thêm nhóm docker. |
+| Không thấy worker / job queued | Thực hiện bước 5, kiểm tra service `oasm-worker`, container Up, trang Workers Online và log đăng ký. |
+| Connector `registration rejected: invalid token` | Đọc log worker cùng job/execution, kiểm tra callback đúng replica và image tương thích. Phân biệt token connector với tài khoản collector. Không reset mọi khóa vì lỗi này. |
+| `pool exhausted`, `busy=1 max=1` | Kiểm tra job đang giữ connector và ngân sách RAM/CPU. Chạy tuần tự hoặc cấp tài nguyên theo đo tải, không tăng replicas mù quáng. |
+| Dừng sau khoảng 10 phút, `disconnected before Done` | Xác minh timeout thực tế của job/manifest và lý do dừng. Kết quả thu trước đó là một phần. Thiết lập timeout 60 phút ở PoC cũ không tự chuyển sang runtime upstream mới; không tự thêm khóa timeout ngoài schema Nuclei. |
+| `egress deny ... reason=auth` | Proxy worker từ chối xác thực request. Kiểm tra log cùng execution và đường proxy connector; không kết luận website chặn IP hoặc bỏ xác thực để hết lỗi. |
+| Setup `INVALID_ORIGIN` | Kiểm tra BASE_URL trong container, sửa `.env` và recreate API theo bước 6.1; nhập cùng browser origin. |
+| Setup HTTP 401/403 khác | Xem endpoint/mã lỗi; kiểm tra account active, mật khẩu, membership và quyền đọc. [Bảng chẩn đoán](SIEM-QUICKSTART.md#5-lỗi-đăng-nhập-hoặc-quyền-đọc-oasm) |
+| Vector `Request timed out` ở cả bốn sink | Kiểm tra endpoint, listener, route, firewall từ host rồi từ container. Với VMware → Windows xem bước 6.2. Chưa tăng timeout để che lỗi đường mạng. |
+| Vector HTTP 401 | Key sai, hết hạn hoặc sai định dạng; thay encoded key trong secret. |
+| Vector HTTP 403 | Kiểm tra quyền key trên đúng stream và quyền tài khoản cấp key; không cấp quyền toàn cluster để thử. |
+| Vector HTTP 400 / mapping hoặc parse error | Xem lỗi chi tiết theo sink, kiểu field và dữ liệu nguồn; giữ file/buffer để đối soát, không xóa index để xử lý nhanh. |
+| Không thấy tài liệu của host VM | Kiểm tra OASM_SOURCE_HOST, log results/vector và query bước 6.5; phân biệt dữ liệu cũ dưới tên host khác. |
+| Index `yellow`, `rep=1` trên một node | Có thể do replica chưa được cấp phát. Kiểm tra cluster health; trạng thái này không tự chứng minh ingestion lỗi. Production cần kế hoạch replica/phục hồi. |
+| API unhealthy sau restore | Xem `ps -a`, log migration/Postgres/RustFS/API; dùng overlay có phụ thuộc RustFS và thời gian khởi động healthcheck. |
 
 ### 7. Bàn giao và vận hành
 
@@ -219,10 +403,23 @@ Dùng **Test query** để kiểm tra điều kiện trước khi bật. Đối 
 | Dữ liệu | Checksum đạt, đối soát đúng workspace, đọc được findings, URL và file cũ. |
 | Giao diện | Đăng nhập được theo địa chỉ production, logo hiển thị, đường HTTPS và proxy đã được System kiểm tra. |
 | SIEM | Một log mới từ host đích, một finding đã đối chiếu và một alert thử có bằng chứng trên SIEM. |
-| Worker quét nếu nằm trong phạm vi bàn giao | Ghi kết quả nghiệm thu riêng của một lượt kiểm thử đã duyệt, từ job đến finding và cảnh báo. |
+| Worker quét | Container Up, worker Online; có bằng chứng một job đã thực thi connector và lưu kết quả. Ghi riêng việc nghiệm thu alert và giới hạn phạm vi scan. |
 | Bản sao lưu | Lưu PostgreSQL, object storage, audit và khóa mã hóa theo kênh riêng. Thử khôi phục vào một môi trường trống trước lần chuyển đổi lớn. |
 
 Khi thay đổi phiên bản, giữ nguyên VM cũ đến khi máy mới đã được nghiệm thu. Nếu lệnh mở console báo `core-api` `unhealthy`, chạy `"${upstream_stack[@]}" ps -a`. Nếu API đã chuyển sang `healthy`, chạy lại lệnh mở console trên cùng project. Nếu RustFS chưa chạy hoặc API vẫn lỗi, cập nhật repo NCS để lấy overlay mới rồi kiểm tra log `core-api`, `rustfs`, `postgres` và `migration`. Nếu importer báo project hoặc volume đã tồn tại, kiểm tra Docker context và tên project. Dùng project trống để phục hồi thử.
+
+Sau khi đóng terminal, khai báo lại đường dẫn và mảng Compose trước khi dùng các lệnh vận hành. Thay `PROJECT` bằng đúng project đang chạy, không tạo project mới để sửa một instance hiện có:
+
+```bash
+export NCS="$HOME/ncs-oasm"
+export UPSTREAM="$HOME/oasm-upstream"
+export PROJECT=oasm-upstream-restore
+upstream_stack=(docker compose --project-directory "$UPSTREAM" --env-file "$UPSTREAM/.env"
+  -p "$PROJECT" -f "$UPSTREAM/docker-compose.yml" -f "$NCS/compose.upstream-data.yaml")
+"${upstream_stack[@]}" ps -a
+```
+
+Trước go-live, lưu commit của hai repo, digest các image, kết quả đếm dữ liệu và cấu hình đã nghiệm thu. Sao lưu dữ liệu hiện tại trước nâng cấp; snapshot PoC cũ không chứa các thay đổi phát sinh sau thời điểm xuất. Giữ `.env`, khóa mã hóa, mật khẩu và archive ngoài GitHub. Chốt lịch backup/restore, cấp phát tài nguyên, endpoint HTTPS, phạm vi quét, đầu mối dừng, nơi nhận alert và chính sách thay khóa. Chưa gọi production sẵn sàng chỉ vì console mở hoặc collector Up.
 
 ## Phần 2. Triển khai trên Windows
 
@@ -300,8 +497,8 @@ upstream_stack=(docker compose --project-directory "$UPSTREAM" --env-file "$UPST
 
 Trên Windows, mở [Open ASM local](http://localhost:6276). Có thể kiểm tra cổng từ PowerShell bằng `Get-NetTCPConnection -LocalPort 6276 -State Listen`. Trong Docker Desktop → **Containers**, chọn project `oasm-upstream-restore` hoặc tên đã đặt để xem log container.
 
-### 4. Đổi logo, kết nối SIEM và bàn giao
+### 4. Bật worker, đổi logo, kết nối SIEM và bàn giao
 
-1. Đăng nhập và đối chiếu workspace, assets, findings, URL cùng file đính kèm. Đổi tên và logo trong **Admin → Brand**. [Các bước nghiệm thu và đổi logo](#5-nghiệm-thu-dữ-liệu-và-đổi-logo)
-2. Chạy Vector và collector API từ Ubuntu WSL. Dùng đường dẫn Linux khi cấu hình thư mục collector, nhập `OASM_RESULTS_IMAGE` theo tag API và `OASM_DOCKER_NETWORK=oasm_net` nếu giữ cấu hình upstream. Nếu dùng Docker Desktop cho cả OASM và Elastic PoC, kiểm tra container Vector có đường mạng tới Elasticsearch. [Các bước SIEM và alert](#6-thu-log-findings-và-kiểm-tra-alert)
+1. Bật worker gốc theo [bước 5](#5-bật-worker-gốc-nghiệm-thu-dữ-liệu-và-đổi-logo), gồm GID Docker socket và một replica. Kiểm tra container Up và worker Online. Đăng nhập, đối chiếu workspace, assets, findings, URL cùng file đính kèm; đổi tên và logo trong **Admin → Brand**.
+2. Chạy setup, Vector và collector API từ Ubuntu WSL theo [bước 6](#6-kết-nối-elastic-và-kiểm-tra-dữ-liệu-alert). Dùng đường dẫn Linux và xác nhận endpoint Elastic truy cập được từ container. Nếu Ubuntu là VM VMware riêng thay vì WSL, áp dụng mục 6.2 cho đường mạng Windows/VMware. Kiểm tra dữ liệu theo host mới và đối soát chống trùng sau migrate.
 3. Áp dụng [bảng nghiệm thu](#7-bàn-giao-và-vận-hành) trước khi chuyển sang production. Với production trên Linux, dùng cùng commit và phiên bản đã nghiệm thu rồi đặt lại đường dẫn, endpoint, proxy và khóa cho máy đích.

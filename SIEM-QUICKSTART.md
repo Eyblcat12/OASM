@@ -2,6 +2,8 @@
 
 Bộ collector này thu log Docker, audit, findings và kết quả discovery. Chạy một lần bộ cấu hình để chọn workspace, nhập tài khoản OASM và đầu nhận Elastic. Collector tự đăng nhập và đăng nhập lại khi phiên hết hạn. File cấu hình, checkpoint và bí mật nằm trong `~/oasm-siem-managed` trên máy triển khai.
 
+Quy trình đầy đủ gồm BASE_URL, API key, kết nối VM VMware tới Elastic trên Windows, kiểm tra bốn dataset và xử lý timeout nằm ở [Deployment, bước 6](DEPLOYMENT.md#6-kết-nối-elastic-và-kiểm-tra-dữ-liệu-alert). Với bản cài mới, nhập đúng project Docker đã chọn thay vì giữ mặc định project restore.
+
 ## 1. Chuẩn bị tài khoản và đầu nhận
 
 Trong OASM, tạo hoặc chọn tài khoản thu thập riêng có quyền đọc workspace, audit, assets và vulnerabilities của workspace cần giám sát. Kiểm tra tài khoản này đăng nhập được. Giữ mật khẩu trong nơi lưu bí mật của môi trường.
@@ -45,6 +47,8 @@ Trong log collector `results`, tìm `Sync complete` và `Discovery synced`. Tron
 | `oasm.discovery` | Dịch vụ hoặc URL đã lưu trong workspace. |
 
 Audit và findings được đọc sau khoảng nghỉ 10 giây. Dịch vụ được đọc sau khoảng nghỉ 30 giây và URL sau khoảng nghỉ 5 phút. Tần suất thực tế cộng thời gian đọc và ghi. Vector giữ bộ đệm trên đĩa khi đầu nhận tạm gián đoạn. Lượt đầu nhập kết quả API đang trả về. Log Docker thu từ thời điểm collector kết nối; lịch sử Docker còn lưu cần nhập theo lô nếu muốn backfill.
+
+Sau migrate vào cùng SIEM, audit/discovery trùng ID có thể giữ tên host cũ. Đối soát ID nguồn trên toàn stream trước khi kết luận thiếu dữ liệu khi lọc host mới. `Sync complete` xác nhận collector ghi cục bộ; đủ bốn dataset trên SIEM xác nhận đường gửi, cần đối soát riêng để kết luận đủ lịch sử và đo độ trễ cập nhật.
 
 ## 4. Vận hành
 
