@@ -1,0 +1,34 @@
+services:
+  core-api:
+    networks: [default, passive-worker-net]
+
+  worker-passive:
+    image: local/oasm-api:poc-2e12e49
+    pull_policy: never
+    entrypoint: ["node", "/worker/passive-worker.cjs"]
+    command: []
+    user: "${OASM_PASSIVE_UID:?Set the operator UID}:${OASM_PASSIVE_GID:?Set the operator GID}"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    depends_on:
+      core-api:
+        condition: service_healthy
+    networks: [passive-worker-net]
+    volumes:
+      - ./worker/passive-worker.cjs:/worker/passive-worker.cjs:ro
+      - ${OASM_PASSIVE_DIR:?Set the private passive worker directory}/join-key:/run/secrets/worker-join-key:ro
+      - ${OASM_PASSIVE_DIR:?Set the private passive worker directory}/input:/inventory:ro
+      - ${OASM_PASSIVE_DIR:?Set the private passive worker directory}/state:/state
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+networks:
+  passive-worker-net:
+    internal: true

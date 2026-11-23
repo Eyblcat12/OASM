@@ -1,0 +1,9 @@
+{
+  "packages": [
+    { "asset_id": "fixture-asset", "ecosystem": "npm", "name": "fixture-package", "version": "1.2.3" },
+    { "asset_id": "fixture-asset", "ecosystem": "npm", "name": "fixture-package", "version": "1.2.4" }
+  ],
+  "advisories": [
+    { "cve": "CVE-2099-99999", "ecosystem": "npm", "name": "fixture-package", "version": "1.2.3" }
+  ]
+}

@@ -4,7 +4,7 @@
 
 NCS OASM đóng gói [Open ASM](https://github.com/oasm-platform/open-asm) để tự triển khai bảng điều khiển quản lý tài sản, theo dõi lỗ hổng và lưu lịch sử công việc. Docker Compose khởi động giao diện, API, PostgreSQL, Redis, RustFS và dịch vụ GeoIP.
 
-Bản Compose này phục vụ quản lý tài sản và xem kết quả đã lưu. Worker quét chưa có trong cấu hình triển khai. Kết nối TI/SIEM sử dụng đầu nhận hoặc collector do người vận hành cấu hình.
+Bản Compose chính phục vụ quản lý tài sản và xem kết quả đã lưu. Có overlay riêng cho worker đăng ký vào OASM và đối chiếu CVE từ file kiểm kê. Kết nối TI/SIEM sử dụng đầu nhận hoặc collector do người vận hành cấu hình.
 
 ## Bắt đầu
 
@@ -21,6 +21,7 @@ cd ncs-oasm
 | Chuyển tài khoản, target, kết quả và cấu hình đã có | [Khôi phục snapshot từng bước](RESTORE.md) |
 | Cài Docker trên Ubuntu 24.04 hoặc VM Linux | [Docker Engine và Compose](DOCKER-ENGINE.md) |
 | Cài Docker trên Windows | [Docker Desktop và WSL 2](DOCKER-DESKTOP.md) |
+| Chạy worker kiểm kê và thử đối chiếu CVE từ file | [Worker kiểm kê thụ động](WORKER-PASSIVE.md) |
 | Dùng giao diện, kiểm tra dịch vụ và thử TI/SIEM | [Vận hành](OPERATIONS.md) |
 | Thu log Docker, audit và kết quả quét vào Elastic, Wazuh hoặc QRadar | [Gửi dữ liệu về SIEM](SIEM.md) |
 
