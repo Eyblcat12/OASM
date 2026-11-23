@@ -27,6 +27,7 @@ cd ncs-oasm
 | Xác nhận image worker gốc khởi động và đăng ký Online | [Kiểm tra worker gốc](WORKER-CHECK.md) |
 | Dùng giao diện, kiểm tra dịch vụ và thử TI/SIEM | [Vận hành](OPERATIONS.md) |
 | Thu log Docker, audit và kết quả quét vào Elastic, Wazuh hoặc QRadar | [Gửi dữ liệu về SIEM](SIEM.md) |
+| Bật collector cho Elastic qua một lần cấu hình | [SIEM quickstart](SIEM-QUICKSTART.md) |
 
 ## Phiên bản và giấy phép
 

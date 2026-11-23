@@ -168,6 +168,8 @@ ssh -N -L 6276:127.0.0.1:6276 user@vm-host
 
 ### 6. Thu log, findings và kiểm tra alert
 
+Để cấu hình một lần cho Elastic, dùng [SIEM quickstart](SIEM-QUICKSTART.md). Bộ cấu hình tự nhận diện image API, chọn workspace và tạo hai collector, với tài khoản OASM riêng và khóa ghi Elastic. Phần bên dưới phục vụ cấu hình thủ công hoặc tùy chỉnh đầu nhận.
+
 Hai đầu vào SIEM đọc độc lập. **Vector** đọc stdout/stderr của Docker. **Collector kết quả** đọc audit, findings và discovery đã lưu qua API OASM. Làm theo các bước tạo cấu hình, cấp quyền và kiểm thử trong [hướng dẫn SIEM](SIEM.md). Với deployment upstream trong file này, chú ý các giá trị sau.
 
 | Cấu hình | Giá trị cần dùng |

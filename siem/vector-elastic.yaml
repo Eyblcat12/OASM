@@ -1,0 +1,79 @@
+data_dir: /var/lib/vector
+
+secret:
+  elastic:
+    type: file
+    path: /run/secrets/elastic.json
+
+sources:
+  oasm_docker:
+    type: docker_logs
+    include_labels: ["com.docker.compose.project=${OASM_PROJECT}"]
+  oasm_results:
+    type: file
+    include: ["/out/oasm-*.ndjson"]
+    read_from: beginning
+
+transforms:
+  docker_event:
+    type: remap
+    inputs: [oasm_docker]
+    source: |
+      service_name = to_string(.label."com.docker.compose.service") ?? string!(.container_name)
+      . = {
+        "timestamp": .timestamp,
+        "message": .message,
+        "event": {"dataset": "oasm.docker"},
+        "host": {"name": get_env_var!("OASM_SOURCE_HOST")},
+        "service": {"name": service_name},
+        "container": {"id": .container_id, "name": .container_name},
+        "log": {"iostream": .stream}
+      }
+  result_event:
+    type: remap
+    inputs: [oasm_results]
+    drop_on_error: true
+    source: |
+      . = parse_json!(string!(.message))
+      .collector_event_id = string!(.event.id)
+  by_dataset:
+    type: route
+    inputs: [result_event]
+    reroute_unmatched: false
+    route:
+      audit: '.event.dataset == "oasm.audit"'
+      finding: '.event.dataset == "oasm.finding"'
+      discovery: '.event.dataset == "oasm.discovery"'
+
+sinks:
+  elastic_docker: &elastic
+    type: elasticsearch
+    inputs: [docker_event]
+    endpoints: ["${ELASTIC_ENDPOINT}"]
+    api_version: v8
+    mode: data_stream
+    data_stream: {type: logs, dataset: oasm.docker, namespace: poc, auto_routing: false}
+    request:
+      headers:
+        Authorization: "SECRET[elastic.authorization]"
+    healthcheck:
+      enabled: false
+    buffer:
+      type: disk
+      max_size: 536870912
+      when_full: block
+  elastic_audit:
+    <<: *elastic
+    inputs: [by_dataset.audit]
+    id_key: collector_event_id
+    data_stream: {type: logs, dataset: oasm.audit, namespace: poc, auto_routing: false}
+  elastic_finding:
+    <<: *elastic
+    inputs: [by_dataset.finding]
+    id_key: collector_event_id
+    data_stream: {type: logs, dataset: oasm.finding, namespace: poc, auto_routing: false}
+  elastic_discovery:
+    <<: *elastic
+    inputs: [by_dataset.discovery]
+    id_key: collector_event_id
+    data_stream: {type: logs, dataset: oasm.discovery, namespace: poc, auto_routing: false}

@@ -1,0 +1,50 @@
+name: oasm-siem
+
+services:
+  results:
+    image: ${OASM_RESULTS_IMAGE:?Set the installed API image}
+    pull_policy: never
+    entrypoint: ["node", "/collector/collect-results.cjs"]
+    command: []
+    user: "${OASM_COLLECTOR_UID:?Set operator UID}:${OASM_COLLECTOR_GID:?Set operator GID}"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    environment:
+      OASM_BASE_URL: ${OASM_BASE_URL:?Set internal API URL}
+      OASM_SOURCE_HOST: ${OASM_SOURCE_HOST:?Set source host}
+    volumes:
+      - ./collect-results.cjs:/collector/collect-results.cjs:ro
+      - ${OASM_SIEM_DIR:?Set collector directory}/private/oasm-account.json:/run/secrets/sync-connection:ro
+      - ${OASM_SIEM_DIR}/state:/state
+      - ${OASM_SIEM_DIR}/out:/out
+    networks: [oasm]
+    logging: &logging
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+
+  vector:
+    image: timberio/vector:0.62.0-debian
+    restart: unless-stopped
+    environment:
+      OASM_SOURCE_HOST: ${OASM_SOURCE_HOST}
+      OASM_PROJECT: ${OASM_PROJECT:?Set source Compose project}
+      ELASTIC_ENDPOINT: ${ELASTIC_ENDPOINT:?Set reachable Elasticsearch URL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${OASM_SIEM_DIR}/vector.yaml:/etc/vector/vector.yaml:ro
+      - ${OASM_SIEM_DIR}/private/elastic.json:/run/secrets/elastic.json:ro
+      - ${OASM_SIEM_DIR}/out:/out:ro
+      - vector-data:/var/lib/vector
+    command: ["--config", "/etc/vector/vector.yaml"]
+    logging: *logging
+
+networks:
+  oasm:
+    external: true
+    name: ${OASM_DOCKER_NETWORK:?Set OASM Docker network}
+
+volumes:
+  vector-data:

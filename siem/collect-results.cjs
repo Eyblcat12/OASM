@@ -75,22 +75,52 @@ function findingDocument(row, workspace) {
   };
 }
 
+function updateCookies(response, connection) {
+  const cookies = new Map((connection.cookie || '').split(/;\s*/).filter(Boolean).map(pair => [pair.split('=', 1)[0], pair]));
+  for (const header of response.headers.getSetCookie()) {
+    const pair = header.split(';', 1)[0];
+    cookies.set(pair.split('=', 1)[0], pair);
+  }
+  connection.cookie = [...cookies.values()].join('; ');
+}
+
+async function signIn(connection) {
+  if (!connection.login) {
+    connection.login = (async () => {
+      const response = await fetch(new URL('/api/auth/sign-in/email', OASM), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: connection.origin },
+        body: JSON.stringify({ email: connection.email, password: connection.password }),
+        redirect: 'error',
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) throw new Error(`OASM sign-in returned HTTP ${response.status}`);
+      connection.cookie = '';
+      updateCookies(response, connection);
+      await response.arrayBuffer();
+      if (!connection.cookie) throw new Error('OASM sign-in did not set a session cookie');
+    })().finally(() => { connection.login = undefined; });
+  }
+  return connection.login;
+}
+
 async function getOasm(path, connection) {
-  const response = await fetch(new URL(path, OASM), {
+  if (!connection.cookie && connection.email) await signIn(connection);
+  const requestCookie = connection.cookie;
+  const request = () => fetch(new URL(path, OASM), {
     headers: { Cookie: connection.cookie, 'X-Workspace-ID': connection.workspace },
     redirect: 'error',
     signal: AbortSignal.timeout(8000),
   });
-  if (!response.ok) throw new Error(`OASM GET ${path.split('?')[0]} returned HTTP ${response.status}`);
-  const newCookies = response.headers.getSetCookie();
-  if (newCookies.length > 0) {
-    const cookies = new Map(connection.cookie.split(/;\s*/).map(pair => [pair.split('=', 1)[0], pair]));
-    for (const header of newCookies) {
-      const pair = header.split(';', 1)[0];
-      cookies.set(pair.split('=', 1)[0], pair);
-    }
-    connection.cookie = [...cookies.values()].join('; ');
+  let response = await request();
+  if (response.status === 401 && connection.email) {
+    await response.arrayBuffer();
+    if (connection.cookie === requestCookie) await signIn(connection);
+    if (connection.login) await connection.login;
+    response = await request();
   }
+  if (!response.ok) throw new Error(`OASM GET ${path.split('?')[0]} returned HTTP ${response.status}`);
+  updateCookies(response, connection);
   return response.json();
 }
 
@@ -277,9 +307,12 @@ async function main() {
       endpoint.pathname !== '/' || endpoint.search || endpoint.hash || !host.name) {
     throw new Error('Set OASM_BASE_URL to an HTTP(S) origin and set OASM_SOURCE_HOST');
   }
-  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(connection.workspace) ||
-      typeof connection.cookie !== 'string' || !connection.cookie.trim() || /[\r\n]/.test(connection.cookie)) {
-    throw new Error('The connection file needs a workspace UUID and an OASM session cookie');
+  const cookieAuth = typeof connection.cookie === 'string' && connection.cookie.trim() && !/[\r\n]/.test(connection.cookie);
+  const accountAuth = typeof connection.email === 'string' && connection.email.trim() &&
+    typeof connection.password === 'string' && connection.password.length > 0 &&
+    typeof connection.origin === 'string' && new URL(connection.origin).origin === connection.origin;
+  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(connection.workspace) || !(cookieAuth || accountAuth)) {
+    throw new Error('The connection file needs a workspace UUID and session or account credentials');
   }
   await Promise.all([
     pollSecurity('audit', async checkpoint => {
@@ -296,7 +329,11 @@ async function main() {
   ]);
 }
 
-main().catch(error => {
-  console.error(`OASM security sync could not start: ${error.message}`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch(error => {
+    console.error(`OASM security sync could not start: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { getOasm };

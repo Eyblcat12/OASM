@@ -2,6 +2,8 @@
 
 Hướng dẫn dành cho Docker Engine trên Linux và Docker Desktop trên Windows. Thu dữ liệu từ OASM một lần, chuẩn hóa thành sự kiện JSON, rồi chọn đầu ra phù hợp với SIEM đang dùng.
 
+Nếu dùng Elastic, bắt đầu với [bộ cấu hình collector tự đăng nhập](SIEM-QUICKSTART.md). Bộ này tạo cấu hình cho cả log Docker và kết quả OASM trong một lần. Các phần bên dưới phục vụ tùy chỉnh đầu ra, Wazuh, QRadar hoặc cách thu bằng phiên có sẵn.
+
 ```text
 OASM → collector → chuẩn hóa và lưu đệm → Elastic / Wazuh / QRadar / SIEM khác
 ```
