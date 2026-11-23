@@ -39,6 +39,43 @@ def write_private(path, content):
         output.write(content)
 
 
+def describe_api_error(error):
+    """Expose the failing endpoint and known error codes, never response secrets."""
+    path = urlsplit(error.url).path
+    details = {}
+    try:
+        details = json.loads(error.read(4096))
+    except (ValueError, OSError):
+        pass
+    if not isinstance(details, dict):
+        details = {}
+    code = details.get("code")
+    # Only print codes with the shape used by Better Auth. Do not echo arbitrary
+    # response messages, which may contain request data or a proxy's HTML page.
+    code = code if isinstance(code, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{1,79}", code) else None
+    location = "sign-in" if path == "/api/auth/sign-in/email" else "workspace listing" if path == "/api/workspaces" else "workspace read check"
+    text = f"OASM {location} failed: HTTP {error.code} at {path}"
+    if code:
+        text += f" (code={code})"
+    hints = {
+        "INVALID_ORIGIN": "Use the exact browser origin configured as BASE_URL in the running OASM API, including scheme and port.",
+        "MISSING_OR_NULL_ORIGIN": "Check that the console proxy forwards the Origin header to OASM.",
+        "BANNED_USER": "Ask an OASM administrator to check whether this account is active and approved.",
+        "USER_BANNED": "Ask an OASM administrator to check whether this account is active and approved.",
+        "EMAIL_NOT_VERIFIED": "Complete the account's email verification and approval in OASM.",
+        "INVALID_EMAIL_OR_PASSWORD": "Check the account by signing in to the same console with a private browser window.",
+    }
+    hint = hints.get(code)
+    if not hint:
+        if location == "sign-in":
+            hint = "Check sign-in in a private browser window and the OASM API authentication log. This is not an Elasticsearch error."
+        elif error.code == 401:
+            hint = "Sign-in did not produce a usable session. Check the browser origin, HTTPS and cookie settings."
+        else:
+            hint = "Check this account's workspace membership and the read permission for the failing endpoint."
+    return text + "\n" + hint
+
+
 def main():
     if os.name != "posix":
         raise ValueError("Run this command in Linux or a Docker-integrated WSL distribution")
@@ -86,6 +123,7 @@ def main():
                     headers={"Content-Type": "application/json", "Origin": public})
     with client.open(login, timeout=10) as response:
         response.read()
+    print("OASM sign-in accepted. Checking workspace access...")
 
     workspaces = []
     page = 1
@@ -152,7 +190,7 @@ if __name__ == "__main__":
     try:
         main()
     except HTTPError as error:
-        print(f"OASM API returned HTTP {error.code}. Check the account, origin and workspace read permissions.", file=sys.stderr)
+        print(describe_api_error(error), file=sys.stderr)
         sys.exit(1)
     except (URLError, ValueError, OSError, subprocess.SubprocessError) as error:
         print(f"Setup could not finish: {error}", file=sys.stderr)

@@ -51,3 +51,17 @@ Audit và findings được đọc sau khoảng nghỉ 10 giây. Dịch vụ đ�
 Mở lại terminal thì khai báo lại biến `siem` như ở bước 2. Dùng `"${siem[@]}" ps` để xem trạng thái và `"${siem[@]}" logs --tail 80` khi có lỗi. Khởi động lại sau khi đổi mật khẩu OASM hoặc khóa Elastic bằng `"${siem[@]}" up -d --force-recreate`.
 
 Thông tin tài khoản nằm trong `private/oasm-account.json`. Khóa Elastic nằm trong `private/elastic.json`. Giữ thư mục `state` và volume Vector qua các lần restart. Theo dõi hạn của API key và dung lượng đĩa cho NDJSON cùng bộ đệm. Bộ cài xác minh đăng nhập và quyền đọc OASM; nghiệm thu mạng và quyền ghi Elastic bằng một sự kiện thật sau khi khởi động. [Chi tiết Wazuh, QRadar và alert](SIEM.md)
+
+## 5. Lỗi đăng nhập hoặc quyền đọc OASM
+
+Nếu bộ cấu hình báo HTTP 401/403, cập nhật repo rồi chạy lại. Thông báo mới ghi endpoint bị từ chối và mã lỗi xác thực nếu API cung cấp. Khi chưa chọn workspace, bộ cài chưa kết nối Elasticsearch và chưa tạo file bí mật.
+
+| Điểm lỗi | Kiểm tra và xử lý |
+| --- | --- |
+| `/api/auth/sign-in/email`, `INVALID_ORIGIN` | Nhập đúng origin console theo `BASE_URL` của API đang chạy, gồm giao thức và cổng. `localhost` và `127.0.0.1` là hai origin khác nhau. |
+| `/api/auth/sign-in/email`, `BANNED_USER`, `USER_BANNED` hoặc `EMAIL_NOT_VERIFIED` | Quản trị viên kiểm tra trạng thái tài khoản, xác minh email và duyệt tài khoản theo cấu hình OASM. |
+| `/api/auth/sign-in/email`, HTTP 401 hoặc `INVALID_EMAIL_OR_PASSWORD` | Đăng nhập thử cùng tài khoản tại đúng console bằng cửa sổ riêng tư để kiểm tra mật khẩu, tránh dùng phiên trình duyệt đã lưu. |
+| `/api/workspaces`, HTTP 401 | Kiểm tra session cookie và HTTPS của console. |
+| `/api/workspaces` hoặc endpoint đọc dữ liệu, HTTP 403 | Kiểm tra thành viên workspace và quyền đọc audit, assets, vulnerabilities của tài khoản collector. |
+
+Xem log xác thực gần thời điểm thử bằng `docker logs --since 5m --tail 100 oasm-api`. Chỉ chia sẻ dòng lỗi liên quan đã che thông tin nhạy cảm; không gửi mật khẩu, cookie hoặc nội dung `.env`. Nếu không có mã lỗi và log API không ghi request tương ứng, kiểm tra access/error log của reverse proxy console. Giữ cơ chế xác thực của OASM khi xử lý lỗi.
