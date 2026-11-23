@@ -4,6 +4,11 @@ services:
       - "127.0.0.1:6276:80"
 
   core-api:
+    depends_on:
+      rustfs:
+        condition: service_started
+    healthcheck:
+      start_period: 30s
     environment:
       AUDIT_ARCHIVE_DIR: /app/audit-archive
     volumes:

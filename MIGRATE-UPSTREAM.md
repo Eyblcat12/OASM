@@ -36,7 +36,7 @@ bash "$NCS/migrate-upstream-data.sh" --check "$SNAP" "$UPSTREAM" "$PROJECT" &&
 
 ## Mở console và đối chiếu
 
-Khi script in `Upstream data imported and counts matched`, dùng cùng project, `.env` và overlay để mở console upstream. Overlay gắn audit archive và giới hạn console ở `127.0.0.1:6276`. Các lệnh này chọn service `console` và những phụ thuộc của nó trong bộ Compose gốc.
+Khi script in `Upstream data imported and counts matched`, dùng cùng project, `.env` và overlay để mở console upstream. Overlay gắn audit archive, khởi động RustFS trước API và dành thời gian khởi động cho health check. Console mở tại `127.0.0.1:6276`. Các lệnh này chọn service `console` và những phụ thuộc của nó trong bộ Compose gốc.
 
 ```bash
 upstream_stack=(docker compose --project-directory "$UPSTREAM" --env-file "$UPSTREAM/.env"

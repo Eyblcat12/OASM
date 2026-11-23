@@ -154,7 +154,7 @@ upstream_stack=(docker compose --project-directory "$UPSTREAM" --env-file "$UPST
 curl --fail --silent --show-error http://127.0.0.1:6276/api/health
 ```
 
-Overlay giữ console tại `127.0.0.1:6276` và gắn volume audit archive. Nếu dùng trình duyệt ngay trên VM, mở [Open ASM local](http://localhost:6276). Từ máy quản trị, dùng SSH tunnel rồi mở cùng địa chỉ trên trình duyệt của máy quản trị.
+Overlay giữ console tại `127.0.0.1:6276`, gắn volume audit archive và yêu cầu khởi động RustFS trước `core-api`. Health check API có 30 giây chờ khởi động. Nếu dùng trình duyệt ngay trên VM, mở [Open ASM local](http://localhost:6276). Từ máy quản trị, dùng SSH tunnel rồi mở cùng địa chỉ trên trình duyệt của máy quản trị.
 
 ```bash
 ssh -N -L 6276:127.0.0.1:6276 user@vm-host
@@ -220,7 +220,7 @@ Dùng **Test query** để kiểm tra điều kiện trước khi bật. Đối 
 | Worker quét nếu nằm trong phạm vi bàn giao | Ghi kết quả nghiệm thu riêng của một lượt kiểm thử đã duyệt, từ job đến finding và cảnh báo. |
 | Bản sao lưu | Lưu PostgreSQL, object storage, audit và khóa mã hóa theo kênh riêng. Thử khôi phục vào một môi trường trống trước lần chuyển đổi lớn. |
 
-Khi thay đổi phiên bản, giữ nguyên VM cũ đến khi máy mới đã được nghiệm thu. Nếu console lỗi, xem `"${upstream_stack[@]}" ps -a` và log `core-api`, `postgres`, `migration`. Nếu importer báo project hoặc volume đã tồn tại, kiểm tra Docker context và tên project; dùng project trống để phục hồi thử.
+Khi thay đổi phiên bản, giữ nguyên VM cũ đến khi máy mới đã được nghiệm thu. Nếu lệnh mở console báo `core-api` `unhealthy`, chạy `"${upstream_stack[@]}" ps -a`. Nếu API đã chuyển sang `healthy`, chạy lại lệnh mở console trên cùng project. Nếu RustFS chưa chạy hoặc API vẫn lỗi, cập nhật repo NCS để lấy overlay mới rồi kiểm tra log `core-api`, `rustfs`, `postgres` và `migration`. Nếu importer báo project hoặc volume đã tồn tại, kiểm tra Docker context và tên project. Dùng project trống để phục hồi thử.
 
 ## Phần 2. Triển khai trên Windows
 
