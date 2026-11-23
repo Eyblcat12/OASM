@@ -76,6 +76,8 @@ Alert phải được tạo và nghiệm thu trên SIEM, không tự có sau khi
 
 Chia 128 website thành nhóm, rải lịch discovery và vulnerability scan. Bắt đầu một job Nuclei đồng thời, thử hai sau khi đã đo tải và điều chỉnh đúng pool/budget. Quét CVE mới theo template liên quan công nghệ, quét rộng theo lịch riêng. Tính tổng lưu lượng theo backend/IP dùng chung, không chỉ theo số domain.
 
+Với VM nhỏ có một worker, dùng [worker-jobs 1](RUNTIME.md#vm-nhỏ-để-job-chờ-ở-hàng-đợi-thay-vì-hết-slot) để giữ các job workflow còn lại trong hàng đợi API. Điều này tránh tình huống nhận nhiều job rồi hết budget chờ container khi một Nuclei dài đang chiếm pool một replica. Chỉ áp dụng khi lượt đang chạy đã kết thúc hoặc được Cancel.
+
 Các điểm PoC còn cần xử lý/đối soát trước bàn giao:
 
 - Lượt quét đã có trường hợp dừng khoảng 10 phút, trả kết quả một phần. Xác minh timeout runtime/manifest trên đích; chưa coi quét rộng hoàn tất.
@@ -83,6 +85,7 @@ Các điểm PoC còn cần xử lý/đối soát trước bàn giao:
 - Chưa có benchmark đủ 128 website trong một cửa sổ quét đã chốt; tăng tài nguyên không tự tăng độ bao phủ hoặc chất lượng phát hiện CVE.
 - Chưa nghiệm thu HTTPS tới SIEM production, rule/notification thực tế, backup mới và restore trên hạ tầng production.
 - Chưa xác nhận nối tiếp proxy ngoài cho worker. Squid chưa được triển khai; thư mục lab trống không phải một thành phần cần migrate.
+- Có phản ánh Run đã Cancel nhưng execution của cùng job vẫn chiếm slot. Cần đối chiếu thời điểm hủy với log và nghiệm thu riêng luồng Cancel từ UI/API tới worker/connector; dừng container thủ công không thay thế việc sửa trạng thái hàng đợi hoặc retry.
 
 Biên bản nghiệm thu ghi: phiên bản/digest, checksum và số đếm dữ liệu mới nhất, worker Online, job thực thi đúng scope, không ngắt sớm, kết quả lưu được, đủ luồng SIEM cần dùng, đối chiếu một finding và một sự kiện mới, alert thử nếu thuộc phạm vi, khôi phục backup và người nhận bàn giao. Tách bằng chứng hạ tầng chạy được với bằng chứng scanner phát hiện đúng lỗ hổng.
 

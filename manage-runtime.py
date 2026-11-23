@@ -54,6 +54,10 @@ def compose_args(deployment, managed=False):
         args.extend(["-f", file])
     if managed:
         args.extend(["-f", str(root / "compose.runtime.yaml")])
+    # Preserve the independently managed worker policy in all future commands.
+    worker_overlay = root / "compose.worker.yaml"
+    if worker_overlay.exists() and str(worker_overlay) not in files:
+        args.extend(["-f", str(worker_overlay)])
     return args
 
 
@@ -93,6 +97,51 @@ def write_file(path, contents):
             os.unlink(temporary)
 
 
+def configure_worker(deployment, jobs, check):
+    if not 1 <= jobs <= 16:
+        raise ValueError("Worker jobs must be from 1 to 16; choose 1 on the current small VM")
+    command = compose_args(deployment)
+    ids = docker(*command, "ps", "-a", "-q", "oasm-worker").split()
+    if len(ids) != 1:
+        raise ValueError("This convenience command requires exactly one existing worker replica")
+    running_image = docker("inspect", "--format", "{{.Config.Image}}", ids[0])
+    config = json.loads(docker(*command, "config", "--format", "json"))
+    if config.get("services", {}).get("oasm-worker", {}).get("image") != running_image:
+        raise ValueError("Compose selects a different worker image; use the deployment upgrade procedure first")
+    print(f"Worker policy: at most {jobs} claimed jobs concurrently per worker; pool limits unchanged")
+    if check:
+        print("Read-only check passed. No files changed and no containers restarted.")
+        return
+    root = deployment[-1]
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    root.chmod(0o700)
+    path = root / "compose.worker.yaml"
+    previous = path.read_text() if path.exists() else None
+    if previous is not None:
+        write_file(path.with_name(path.name + ".previous"), previous)
+    overlay = {"services": {"oasm-worker": {"environment": {"WORKER_MAX_CONCURRENCY": str(jobs)}}}}
+    write_file(path, json.dumps(overlay, indent=2) + "\n")
+    command = compose_args(deployment)
+    try:
+        docker(*command, "config", "--quiet")
+    except subprocess.CalledProcessError:
+        if previous is None:
+            path.unlink(missing_ok=True)
+        else:
+            write_file(path, previous)
+        raise ValueError("Compose validation failed; worker policy restored; worker was not restarted")
+    print("Recreating worker only. Run after active scans finish or are cancelled; ongoing scans can be interrupted.", flush=True)
+    docker(*command, "up", "-d", "--no-deps", "--pull", "never", "--force-recreate",
+           "--scale", "oasm-worker=1", "--wait", "--wait-timeout", "180", "oasm-worker", capture=False)
+    new_worker = docker(*command, "ps", "-q", "oasm-worker")
+    env = json.loads(docker("inspect", "--format", "{{json .Config.Env}}", new_worker))
+    # Never print the rest of Config.Env: it contains the worker key.
+    if f"WORKER_MAX_CONCURRENCY={jobs}" not in env:
+        raise ValueError("Worker concurrency verification failed")
+    print(f"Verified WORKER_MAX_CONCURRENCY={jobs}\nSaved overlay: {path}")
+    print("Check Workers Online. Retry failed runs manually; this command does not start scans.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--container", default="oasm-api", help="API container name (default: oasm-api)")
@@ -100,6 +149,9 @@ def main():
     timeout = commands.add_parser("timeout", help="set Nuclei timeout in minutes and recreate API")
     timeout.add_argument("minutes", type=int)
     timeout.add_argument("--check", action="store_true", help="read-only inspection; do not write or restart")
+    worker = commands.add_parser("worker-jobs", help="set claimed job concurrency for one existing worker replica")
+    worker.add_argument("jobs", type=int)
+    worker.add_argument("--check", action="store_true", help="inspect without changing files or restarting")
     commands.add_parser("apply", help="apply minutes saved in the managed settings.json")
     commands.add_parser("status", help="show stack status and active/saved timeout")
     args = parser.parse_args()
@@ -108,6 +160,9 @@ def main():
     deployment = discover(args.container)
     project, _, _, _, root = deployment
     settings = root / "settings.json"
+    if args.command == "worker-jobs":
+        configure_worker(deployment, args.jobs, args.check)
+        return
     if args.command == "status":
         manifest = read_manifest(args.container)
         old = set_timeout(manifest, 60)

@@ -386,7 +386,7 @@ Thư mục bí mật chứa `private/oasm-account.json` và `private/elastic.jso
 | Docker permission denied | Kiểm tra Docker context, quyền user và GID socket của worker. Đăng nhập lại sau khi thêm nhóm docker. |
 | Không thấy worker / job queued | Thực hiện bước 5, kiểm tra service `oasm-worker`, container Up, trang Workers Online và log đăng ký. |
 | Connector `registration rejected: invalid token` | Đọc log worker cùng job/execution, kiểm tra callback đúng replica và image tương thích. Phân biệt token connector với tài khoản collector. Không reset mọi khóa vì lỗi này. |
-| `pool exhausted`, `busy=1 max=1` | Kiểm tra job đang giữ connector và ngân sách RAM/CPU. Chạy tuần tự hoặc cấp tài nguyên theo đo tải, không tăng replicas mù quáng. |
+| `pool exhausted`, `busy=1 max=1` | Kiểm tra job đang giữ connector và ngân sách RAM/CPU. Với VM nhỏ có một worker, xem [lệnh worker-jobs 1](RUNTIME.md#vm-nhỏ-để-job-chờ-ở-hàng-đợi-thay-vì-hết-slot) để chỉ nhận một job mỗi lần. Chờ job hiện tại kết thúc trước khi recreate worker; không tăng replicas mù quáng. |
 | Dừng sau khoảng 10 phút, `disconnected before Done` | Xác minh timeout thực tế của job/manifest và lý do dừng. Kết quả thu trước đó là một phần. Thiết lập timeout 60 phút ở PoC cũ không tự chuyển sang runtime upstream mới; không tự thêm khóa timeout ngoài schema Nuclei. |
 | `egress deny ... reason=auth` | Proxy worker từ chối xác thực request. Kiểm tra log cùng execution và đường proxy connector; không kết luận website chặn IP hoặc bỏ xác thực để hết lỗi. |
 | Setup `INVALID_ORIGIN` | Kiểm tra BASE_URL trong container, sửa `.env` và recreate API theo bước 6.1; nhập cùng browser origin. |

@@ -73,3 +73,22 @@ python3 -B -m unittest discover -s tests -p test_manage_runtime.py -v
 Các kiểm tra bao phủ bảo toàn manifest/overlay/env-file, giới hạn số phút, nhận diện đúng service, chế độ read-only và việc không restart API khi Compose validation lỗi. Nghiệm thu trên VM vẫn cần kiểm tra API healthy, worker Online và thời lượng job thực tế.
 
 Tiện ích cũng từ chối nếu Compose đang chọn tag image API khác container hiện tại. Việc nâng release phải theo quy trình deployment riêng, không thực hiện ngầm khi đổi timeout.
+
+## VM nhỏ: để job chờ ở hàng đợi thay vì hết slot
+
+Stack upstream đang pin đặt worker concurrency bằng 10, còn pool mặc định chỉ cho một replica mỗi image. Một job Nuclei dài có thể giữ slot 60 phút trong khi các job khác đã được worker nhận về hết budget chờ slot 10 phút. Đây là hai loại timeout khác nhau; tăng timeout thực thi không tăng budget chờ slot.
+
+Với một worker trên VM khoảng 8 GB RAM và mỗi Nuclei yêu cầu 4 GiB, khởi đầu bằng **một job được nhận tại một thời điểm**:
+
+```bash
+python3 "$HOME/ncs-oasm/manage-runtime.py" worker-jobs 1 --check
+
+# Chỉ áp dụng sau khi lượt đang quét đã hoàn tất hoặc được Cancel
+python3 "$HOME/ncs-oasm/manage-runtime.py" worker-jobs 1
+```
+
+Tiện ích chỉ recreate service `oasm-worker`, giữ API và file timeout Nuclei. Cần đúng một replica worker đang có trong project; nếu có nhiều replica, tiện ích từ chối để người vận hành đánh giá ngân sách trước. Lệnh này không tăng pool, không giảm RAM của connector, không chạy lại job failed tự động và không khắc phục container bị kẹt.
+
+Giá trị được lưu trong `compose.worker.yaml` cùng thư mục runtime. Các lần dùng tiện ích đổi timeout/apply sau đó tự giữ overlay này. Nếu recreate worker bằng lệnh Compose ngoài tiện ích mà bỏ overlay, concurrency có thể trở về 10; chạy lại `worker-jobs 1` để áp dụng sau khi các lượt đang chạy đã kết thúc.
+
+Khi đạt `Verified WORKER_MAX_CONCURRENCY=1`, kiểm tra Workers Online, rồi chạy lại các job lỗi chờ slot. Các job workflow khác cũng được xử lý tuần tự trên worker này, nên discovery có thể chờ lâu hơn. Đây là cấu hình khởi đầu cho VM nhỏ, không phải cam kết mọi job sẽ thành công: vẫn cần kiểm tra timeout thực thi, mạng, proxy và skipped templates.
