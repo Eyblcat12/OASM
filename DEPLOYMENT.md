@@ -68,24 +68,9 @@ git -C "$UPSTREAM" checkout --detach 56dc2c657743200363b65cf2168ae4f91d0a953c
 
 Checkout trên bản sao sạch. Compose upstream có các container và mạng nội bộ đặt tên cố định. Nếu máy hiện tại đang dùng bộ Compose upstream khác, chọn VM hoặc Docker daemon riêng để nghiệm thu. Khi dùng Docker Desktop, hai context trỏ vào cùng engine vẫn chia sẻ container và volume.
 
-### 3. Chọn phiên bản image và điền `.env`
+### 3. Dùng image phát hành và điền `.env`
 
-**Nếu cài mới**, lấy một tag release upstream mà nhóm triển khai đã chọn và pin giá trị `IMAGE_TAG`. **Nếu chuyển snapshot PoC**, phiên bản runtime phải đọc được schema đã xuất. Ưu tiên thử trước với API và console build từ đúng commit nguồn `2e12e49`. Ví dụ build này phục vụ đối soát dữ liệu và mở console.
-
-```bash
-SOURCE="$HOME/open-asm-src"
-[[ -d "$SOURCE/.git" ]] || git clone --no-checkout --filter=blob:none \
-  https://github.com/oasm-platform/open-asm.git "$SOURCE"
-git -C "$SOURCE" checkout --detach 2e12e49e8ab5420746d9faf43fd48f57a923db58
-
-docker build --platform linux/amd64 -f "$SOURCE/core-api/Dockerfile" \
-  --build-arg APP_VERSION=v0.12.2-poc.2e12e49 \
-  -t oasm/oasm-api:compat-2e12e49 "$SOURCE"
-docker build --platform linux/amd64 -f "$SOURCE/console/Dockerfile" \
-  -t oasm/oasm-console:compat-2e12e49 "$SOURCE"
-```
-
-Nếu dùng hai image vừa build, đặt `IMAGE_TAG=compat-2e12e49` trong `.env`. Tag này dùng để nghiệm thu API và console. Sau khi chọn release production, lặp lại phép khôi phục và kiểm tra UI với đúng release đó trước khi bàn giao.
+Dùng image phát hành của Open ASM với Compose upstream. Đặt `IMAGE_TAG=v0.13.0` để lặp lại phép thử đã chạy với snapshot PoC. Tiến trình migration của release này đã hoàn tất và đối chiếu đúng 128 assets, 163 dịch vụ, 14 findings và 14.218 bản ghi URL. Sau khi kiểm tra console trên VM, giữ tag đã nghiệm thu khi bàn giao production. [Tài liệu triển khai upstream](https://docs.oasm.io/deployment) · [Release v0.13.0](https://github.com/oasm-platform/open-asm/releases/tag/v0.13.0)
 
 ```bash
 cd "$UPSTREAM"
@@ -94,11 +79,11 @@ cp -n .env.example .env
 chmod 0600 .env
 ```
 
-Điền `.env` bằng trình soạn thảo trên VM. Mỗi lần chạy `openssl rand -hex 32` tạo một giá trị riêng cho trường cần khóa hoặc mật khẩu mới. Với snapshot, giữ đúng khóa mã hóa nguồn.
+Điền `.env` từ mẫu upstream. Khi chuyển từ PoC, lấy khóa mã hóa gốc và các thông tin xác thực cần giữ từ file nguồn qua kênh riêng. Cấu hình lại địa chỉ và biến theo máy đích. Mỗi lần chạy `openssl rand -hex 32` tạo một giá trị riêng cho trường cần khóa hoặc mật khẩu mới.
 
 | Biến | Cách điền |
 | --- | --- |
-| `IMAGE_TAG` | Tag release đã nghiệm thu hoặc `compat-2e12e49` cho hai image build ở trên. |
+| `IMAGE_TAG` | `v0.13.0` để lặp lại phép thử với snapshot PoC hoặc tag chính thức đã được nhóm nghiệm thu. |
 | `BASE_URL` | Khi thử local dùng `http://localhost:6276`. Khi dùng reverse proxy, nhập origin HTTPS mà người dùng mở. |
 | `PORT` | Giữ `6277` cho API nội bộ của bộ Compose đã pin. Nginx upstream trỏ tới `core-api:6277`. |
 | `POSTGRES_HOST`, `POSTGRES_USERNAME`, `POSTGRES_DB` | Dùng giá trị mẫu `postgres`, `postgres`, `open_asm` nếu dùng DB trong stack. Điền `POSTGRES_PASSWORD` riêng. |
@@ -112,7 +97,7 @@ Giữ file `.env` và khóa ở nơi lưu bí mật của môi trường. [Cấu
 
 ### 4. Chuyển dữ liệu hoặc mở instance trống
 
-Nếu chuyển dữ liệu, chép snapshot lên VM bên ngoài repo, sửa đường dẫn `SNAP` rồi chạy:
+Nếu chuyển dữ liệu, chép snapshot lên VM bên ngoài repo. Nhập dữ liệu **trước lần khởi động console đầu tiên trên project đích**, khi PostgreSQL và object storage của đích còn trống. Sửa đường dẫn `SNAP` rồi chạy:
 
 ```bash
 SNAP="$HOME/Desktop/oasm-snapshot-YYYYMMDDTHHMMSSZ"
@@ -128,6 +113,7 @@ Nếu cài mới với database trống, đi thẳng tới lệnh mở console b
 upstream_stack=(docker compose --project-directory "$UPSTREAM" --env-file "$UPSTREAM/.env"
   -p "$PROJECT" -f "$UPSTREAM/docker-compose.yml" -f "$NCS/compose.upstream-data.yaml")
 "${upstream_stack[@]}" config --quiet
+"${upstream_stack[@]}" pull console core-api migration
 "${upstream_stack[@]}" up -d --wait --wait-timeout 240 console
 "${upstream_stack[@]}" ps -a
 curl --fail --silent --show-error http://127.0.0.1:6276/api/health
@@ -154,7 +140,7 @@ Hai đầu vào SIEM đọc độc lập. **Vector** đọc stdout/stderr của 
 | Docker project trong `vector.yaml` | Dùng giá trị của `PROJECT`, mặc định ví dụ là `oasm-upstream-restore`. |
 | `OASM_DOCKER_NETWORK` | `oasm_net` với Compose upstream `56dc2c6`. Kiểm tra `docker network ls` nếu System đã đổi mạng. |
 | `OASM_BASE_URL` | `http://core-api:6277` từ trong mạng Docker, theo biến `PORT` của API. |
-| `OASM_RESULTS_IMAGE` | Đúng image API đang chạy, ví dụ `oasm/oasm-api:compat-2e12e49`. |
+| `OASM_RESULTS_IMAGE` | Đúng image API đang chạy, ví dụ `oasm/oasm-api:v0.13.0`. |
 | Endpoint Elastic | URL Elasticsearch do System cấp. Kibana dùng để tạo data view và rule. |
 
 Dùng hai cấu hình Vector và Elasticsearch ở [mục 2 và 4 của hướng dẫn SIEM](SIEM.md) để thu log Docker. Để mở collector kết quả trên Open ASM upstream, dùng các biến sau. Vị trí `out` cần trùng thư mục file đầu vào đã gắn vào Vector.
@@ -165,12 +151,13 @@ export OASM_SOURCE_HOST="$(hostname)"
 export OASM_COLLECTOR_UID="$(id -u)" OASM_COLLECTOR_GID="$(id -g)"
 export OASM_DOCKER_NETWORK=oasm_net
 export OASM_BASE_URL=http://core-api:6277
-export OASM_RESULTS_IMAGE=oasm/oasm-api:compat-2e12e49
+OASM_RESULTS_IMAGE=$("${upstream_stack[@]}" config --images core-api)
+export OASM_RESULTS_IMAGE
 install -d -m 0700 "$OASM_SIEM_DIR/private" "$OASM_SIEM_DIR/state"
 install -d -m 0750 "$OASM_SIEM_DIR/out"
 ```
 
-Đổi `OASM_RESULTS_IMAGE` nếu dùng một tag release khác. Chuẩn bị `private/oasm-session.json` với workspace và phiên đọc hợp lệ theo [phần collector kết quả](SIEM.md#chạy-collector-kết-quả). Giữ file ở ngoài repo với quyền `0600`. Sau đó chạy:
+Biến `OASM_RESULTS_IMAGE` lấy từ Compose của máy đang chạy, nên collector dùng cùng tag với API. Chuẩn bị `private/oasm-session.json` với workspace và phiên đọc hợp lệ theo [phần collector kết quả](SIEM.md#chạy-collector-kết-quả). Giữ file ở ngoài repo với quyền `0600`. Sau đó chạy các lệnh bên dưới.
 
 ```bash
 results="$NCS/siem/compose.results.yaml"
@@ -243,7 +230,7 @@ Kết quả phải hiện `Docker Desktop / linux/x86_64`. Nếu `docker` trong 
 
 ### 3. Clone repo, cấu hình và phục hồi
 
-Để file repo và `.env` trong thư mục home của WSL. Làm theo [bước lấy hai repo](#2-lấy-hai-repo) và [bước chọn image và `.env`](#3-chọn-phiên-bản-image-và-điền-env) của Phần 1. Hai bước này chạy nguyên trong Ubuntu WSL. Nếu Docker Desktop hiện đang chạy bản OASM Windows cũ, dùng môi trường đích riêng để tránh trùng tên container, mạng và cổng.
+Để file repo và `.env` trong thư mục home của WSL. Làm theo [bước lấy hai repo](#2-lấy-hai-repo) và [bước chọn image và `.env`](#3-dùng-image-phát-hành-và-điền-env) của Phần 1. Hai bước này chạy nguyên trong Ubuntu WSL. Nếu Docker Desktop hiện đang chạy bản OASM Windows cũ, dùng môi trường đích riêng để tránh trùng tên container, mạng và cổng.
 
 Nếu snapshot nằm ở `E:\private-backup`, đặt đường dẫn dạng `/mnt/e` trong WSL và chạy từ cùng terminal đã đặt `NCS`, `UPSTREAM`, `PROJECT`.
 
@@ -259,6 +246,7 @@ Sau khi đối soát xong, mở console bằng đúng cấu hình đã nhập. V
 upstream_stack=(docker compose --project-directory "$UPSTREAM" --env-file "$UPSTREAM/.env"
   -p "$PROJECT" -f "$UPSTREAM/docker-compose.yml" -f "$NCS/compose.upstream-data.yaml")
 "${upstream_stack[@]}" config --quiet
+"${upstream_stack[@]}" pull console core-api migration
 "${upstream_stack[@]}" up -d --wait --wait-timeout 240 console
 "${upstream_stack[@]}" ps -a
 ```
