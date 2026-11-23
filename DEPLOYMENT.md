@@ -11,6 +11,13 @@ Quy trình này dùng **Compose của Open ASM gốc** và bộ script NCS OASM 
 
 Tài liệu này hoàn tất luồng dựng console, chuyển dữ liệu và chuyển tiếp sự kiện. Nghiệm thu worker quét và cảnh báo sinh từ một lượt quét mới là mốc riêng. Tài liệu OASM dùng repo `oasm-docker` để triển khai production và yêu cầu sao lưu khóa mã hóa. [Tài liệu Deployment chính thức](https://docs.oasm.io/deployment)
 
+Chọn một luồng sau khi chuẩn bị Docker, repo và `.env`.
+
+| Trường hợp | Linux | Windows qua WSL 2 |
+| --- | --- | --- |
+| Có snapshot cũ. Giữ khóa mã hóa nguồn, nhập dữ liệu vào project trống rồi đăng nhập bằng tài khoản cũ. | [Khôi phục snapshot](#linux-a-khôi-phục-snapshot-cũ) | [Khôi phục snapshot](#windows-a-khôi-phục-snapshot-cũ) |
+| Cài mới. Tạo khóa riêng, khởi tạo database trống rồi tạo admin đầu tiên. | [Cài mới](#linux-b-cài-mới-từ-đầu) | [Cài mới](#windows-b-cài-mới-từ-đầu) |
+
 ## Phần 1. Triển khai trên Linux
 
 ### 1. Cài Docker trên Ubuntu 24.04
@@ -68,6 +75,12 @@ git -C "$UPSTREAM" checkout --detach 56dc2c657743200363b65cf2168ae4f91d0a953c
 
 Checkout trên bản sao sạch. Compose upstream có các container và mạng nội bộ đặt tên cố định. Nếu máy hiện tại đang dùng bộ Compose upstream khác, chọn VM hoặc Docker daemon riêng để nghiệm thu. Khi dùng Docker Desktop, hai context trỏ vào cùng engine vẫn chia sẻ container và volume.
 
+Nếu `~/ncs-oasm` đã tồn tại từ lần cài trước, cập nhật repo trước khi chạy script. Khối lệnh clone chỉ tải repo khi thư mục chưa tồn tại.
+
+```bash
+git -C "$NCS" pull --ff-only origin main
+```
+
 ### 3. Dùng image phát hành và điền `.env`
 
 Dùng image phát hành của Open ASM với Compose upstream. Đặt `IMAGE_TAG=v0.13.0` để lặp lại phép thử đã chạy với snapshot PoC. Tiến trình migration của release này đã hoàn tất và đối chiếu đúng 128 assets, 163 dịch vụ, 14 findings và 14.218 bản ghi URL. Sau khi kiểm tra console trên VM, giữ tag đã nghiệm thu khi bàn giao production. [Tài liệu triển khai upstream](https://docs.oasm.io/deployment) · [Release v0.13.0](https://github.com/oasm-platform/open-asm/releases/tag/v0.13.0)
@@ -75,7 +88,7 @@ Dùng image phát hành của Open ASM với Compose upstream. Đặt `IMAGE_TAG
 ```bash
 cd "$UPSTREAM"
 umask 077
-cp -n .env.example .env
+[[ -e .env ]] || cp .env.example .env
 chmod 0600 .env
 ```
 
@@ -91,11 +104,14 @@ chmod 0600 .env
 | `RUSTFS_ACCESS_KEY`, `RUSTFS_SECRET_KEY`, `RUSTFS_ENDPOINT` | Điền thông tin xác thực object storage và giữ endpoint nội bộ `http://rustfs:9000` khi dùng RustFS trong stack. |
 | `BETTER_AUTH_SECRET` | Khóa riêng của instance. |
 | `ENCRYPTION_KEYS` | Cài mới dùng khóa ngẫu nhiên. Khôi phục dùng đúng khóa nguồn và giữ thứ tự nếu có nhiều khóa. |
+| `OASM_CLOUD_APIKEY` | Điền giá trị theo cấu hình của môi trường; với PoC local, thay giá trị mẫu bằng khóa riêng của instance. |
 | `TRUSTED_PROXIES` | Để trống khi mở trực tiếp. Nếu có reverse proxy, điền theo proxy tin cậy thực tế. |
 
 Giữ file `.env` và khóa ở nơi lưu bí mật của môi trường. [Cấu hình và khóa mã hóa theo tài liệu OASM](https://docs.oasm.io/deployment#encryption-keys)
 
 ### 4. Chuyển dữ liệu hoặc mở instance trống
+
+#### Linux A. Khôi phục snapshot cũ
 
 Nếu chuyển dữ liệu, chép snapshot lên VM bên ngoài repo. Nhập dữ liệu **trước lần khởi động console đầu tiên trên project đích**, khi PostgreSQL và object storage của đích còn trống. Sửa đường dẫn `SNAP` rồi chạy:
 
@@ -107,15 +123,34 @@ bash "$NCS/migrate-upstream-data.sh" --check "$SNAP" "$UPSTREAM" "$PROJECT" &&
 
 Chờ dòng `Upstream data imported and counts matched`. Script chỉ chạy PostgreSQL để nhập dữ liệu và kiểm tra `counts.txt`. Các archive RustFS và audit được đưa vào volume của project mới. Nếu snapshot có job hoặc lịch còn hoạt động, script dừng để người vận hành rà soát. [Chi tiết và xử lý lỗi nhập dữ liệu](MIGRATE-UPSTREAM.md)
 
-Nếu cài mới với database trống, đi thẳng tới lệnh mở console bên dưới. Dùng cùng `.env`, tên project và overlay trong những lần vận hành tiếp theo.
+#### Linux B. Cài mới từ đầu
+
+Dùng project và volume mới cùng `.env` đã điền các khóa dành riêng cho instance. Ví dụ đặt `export PROJECT=oasm-upstream-new`, rồi chuyển thẳng tới bước mở console. Bộ Compose khởi tạo PostgreSQL và schema tự động. Khi màn hình đầu tiên hiện lên, chọn **Create your first admin** và tạo tài khoản quản trị cho instance mới.
+
+#### Mở console trên Linux
+
+Sau bước A hoặc B, dùng cùng `.env`, tên project và overlay trong những lần vận hành tiếp theo. Nếu cổng `6276` đã bận, xem container nào đang giữ cổng:
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Ports}}' | grep ':6276->'
+```
+
+Nếu kết quả xác nhận **console NCS cũ** chiếm cổng và bạn đang chuyển giao diện sang Open ASM gốc, dừng riêng container console cũ. Ví dụ dưới đây dùng đúng tên của bộ cài NCS mặc định.
+
+```bash
+docker stop oasm-ti-siem-test-console-1
+ss -ltn 'sport = :6276'
+```
+
+Khi cổng trống, chạy:
 
 ```bash
 upstream_stack=(docker compose --project-directory "$UPSTREAM" --env-file "$UPSTREAM/.env"
   -p "$PROJECT" -f "$UPSTREAM/docker-compose.yml" -f "$NCS/compose.upstream-data.yaml")
-"${upstream_stack[@]}" config --quiet
-"${upstream_stack[@]}" pull console core-api migration
-"${upstream_stack[@]}" up -d --wait --wait-timeout 240 console
-"${upstream_stack[@]}" ps -a
+"${upstream_stack[@]}" config --quiet &&
+  "${upstream_stack[@]}" pull console core-api migration &&
+  "${upstream_stack[@]}" up -d --wait --wait-timeout 240 console &&
+  "${upstream_stack[@]}" ps -a
 curl --fail --silent --show-error http://127.0.0.1:6276/api/health
 ```
 
@@ -128,7 +163,7 @@ ssh -N -L 6276:127.0.0.1:6276 user@vm-host
 ### 5. Nghiệm thu dữ liệu và đổi logo
 
 1. **Cài mới:** tạo tài khoản admin từ màn hình đầu tiên. **Sau restore:** đăng nhập bằng tài khoản đã lưu trong snapshot.
-2. Chọn workspace nguồn và so **Targets**, **Assets**, **Services** và **Vulnerabilities** với `counts.txt`. Mở một bản ghi URL lịch sử, một finding và một workflow cũ. Tải thử một file đã lưu để kiểm tra RustFS.
+2. **Cài mới:** xác nhận workspace mới mở được. **Sau restore:** chọn workspace nguồn và so **Targets**, **Assets**, **Services** và **Vulnerabilities** với `counts.txt`. Mở một bản ghi URL lịch sử, một finding và một workflow cũ. Tải thử một file đã lưu để kiểm tra RustFS.
 3. Vào **Admin → Brand** (`/admin/brand`), điền tên hiển thị và tải icon. Có thể dùng [icon NCS](branding/ncs-oasm-icon.png). Đăng nhập lại và kiểm tra logo ở giao diện. [Thương hiệu và logo trong OASM](https://docs.oasm.io/brand-name-and-logo)
 
 ### 6. Thu log, findings và kiểm tra alert
@@ -232,6 +267,8 @@ Kết quả phải hiện `Docker Desktop / linux/x86_64`. Nếu `docker` trong 
 
 Để file repo và `.env` trong thư mục home của WSL. Làm theo [bước lấy hai repo](#2-lấy-hai-repo) và [bước chọn image và `.env`](#3-dùng-image-phát-hành-và-điền-env) của Phần 1. Hai bước này chạy nguyên trong Ubuntu WSL. Nếu Docker Desktop hiện đang chạy bản OASM Windows cũ, dùng môi trường đích riêng để tránh trùng tên container, mạng và cổng.
 
+#### Windows A. Khôi phục snapshot cũ
+
 Nếu snapshot nằm ở `E:\private-backup`, đặt đường dẫn dạng `/mnt/e` trong WSL và chạy từ cùng terminal đã đặt `NCS`, `UPSTREAM`, `PROJECT`.
 
 ```bash
@@ -240,15 +277,23 @@ bash "$NCS/migrate-upstream-data.sh" --check "$SNAP" "$UPSTREAM" "$PROJECT" &&
   bash "$NCS/migrate-upstream-data.sh" "$SNAP" "$UPSTREAM" "$PROJECT"
 ```
 
-Sau khi đối soát xong, mở console bằng đúng cấu hình đã nhập. Với instance trống, bắt đầu từ lệnh này sau khi điền `.env`.
+Chờ `Upstream data imported and counts matched` rồi chuyển sang bước mở console. Đăng nhập bằng tài khoản đã có trong snapshot.
+
+#### Windows B. Cài mới từ đầu
+
+Tạo khóa mới trong `.env` và dùng project, volume trống. Ví dụ đặt `export PROJECT=oasm-upstream-new`, rồi chuyển thẳng tới bước mở console. Khi màn hình đầu tiên hiện lên, tạo admin cho instance mới.
+
+#### Mở console trên Windows
+
+Sau bước A hoặc B, mở console bằng đúng project đã chọn. Nếu Docker Desktop đã publish cổng `6276`, kiểm tra container giữ cổng theo [bước mở console trên Linux](#mở-console-trên-linux). Các lệnh `docker` ở đó chạy được trong Ubuntu WSL.
 
 ```bash
 upstream_stack=(docker compose --project-directory "$UPSTREAM" --env-file "$UPSTREAM/.env"
   -p "$PROJECT" -f "$UPSTREAM/docker-compose.yml" -f "$NCS/compose.upstream-data.yaml")
-"${upstream_stack[@]}" config --quiet
-"${upstream_stack[@]}" pull console core-api migration
-"${upstream_stack[@]}" up -d --wait --wait-timeout 240 console
-"${upstream_stack[@]}" ps -a
+"${upstream_stack[@]}" config --quiet &&
+  "${upstream_stack[@]}" pull console core-api migration &&
+  "${upstream_stack[@]}" up -d --wait --wait-timeout 240 console &&
+  "${upstream_stack[@]}" ps -a
 ```
 
 Trên Windows, mở [Open ASM local](http://localhost:6276). Có thể kiểm tra cổng từ PowerShell bằng `Get-NetTCPConnection -LocalPort 6276 -State Listen`. Trong Docker Desktop → **Containers**, chọn project `oasm-upstream-restore` hoặc tên đã đặt để xem log container.
