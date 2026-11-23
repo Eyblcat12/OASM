@@ -1,0 +1,9 @@
+services:
+  core-api:
+    environment:
+      AUDIT_ARCHIVE_DIR: /app/audit-archive
+    volumes:
+      - audit-archive:/app/audit-archive
+
+volumes:
+  audit-archive:

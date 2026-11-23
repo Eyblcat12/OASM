@@ -19,6 +19,7 @@ cd ncs-oasm
 | --- | --- |
 | Chọn quy trình cài đặt và triển khai trên Linux hoặc Windows | [Hướng dẫn triển khai NCS OASM](INSTALL.md) |
 | Chuyển tài khoản, target, kết quả và cấu hình đã có | [Khôi phục snapshot từng bước](RESTORE.md) |
+| Nhập dữ liệu snapshot vào bộ Compose Open ASM gốc | [Chuyển dữ liệu vào Open ASM upstream](MIGRATE-UPSTREAM.md) |
 | Cài Docker trên Ubuntu 24.04 hoặc VM Linux | [Docker Engine và Compose](DOCKER-ENGINE.md) |
 | Cài Docker trên Windows | [Docker Desktop và WSL 2](DOCKER-DESKTOP.md) |
 | Chạy worker kiểm kê và thử đối chiếu CVE từ file | [Worker kiểm kê thụ động](WORKER-PASSIVE.md) |
