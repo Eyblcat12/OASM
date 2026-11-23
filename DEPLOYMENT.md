@@ -379,6 +379,8 @@ Thư mục bí mật chứa `private/oasm-account.json` và `private/elastic.jso
 
 #### 6.7. Xử lý lỗi thường gặp
 
+Để thay đổi timeout Nuclei mà không nhập lại overlay/chuỗi Compose thủ công, dùng [tiện ích cấu hình runtime](RUNTIME.md). Ví dụ `python3 "$HOME/ncs-oasm/manage-runtime.py" timeout 60 --check` để xem trước và bỏ `--check` để áp dụng khi không có job đang chạy. Tiện ích không tự khởi chạy scan.
+
 | Hiện tượng | Kiểm tra và xử lý |
 | --- | --- |
 | Docker permission denied | Kiểm tra Docker context, quyền user và GID socket của worker. Đăng nhập lại sau khi thêm nhóm docker. |

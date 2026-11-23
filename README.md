@@ -18,6 +18,7 @@ cd ncs-oasm
 | Bạn muốn | Tài liệu |
 | --- | --- |
 | Chốt kiến trúc, cấu hình và tiêu chí bàn giao production cho 128 website | [Phương án production](PRODUCTION.md) |
+| Đổi timeout Nuclei bằng một lệnh, giữ source gốc | [Cấu hình runtime](RUNTIME.md) |
 | Dựng Open ASM gốc, chuyển dữ liệu, đổi logo và kết nối SIEM | [Deployment từ đầu tới cuối trên Linux và Windows](DEPLOYMENT.md) |
 | Chọn quy trình cài đặt và triển khai trên Linux hoặc Windows | [Hướng dẫn triển khai NCS OASM](INSTALL.md) |
 | Chuyển tài khoản, target, kết quả và cấu hình đã có | [Khôi phục snapshot từng bước](RESTORE.md) |
