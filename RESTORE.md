@@ -51,7 +51,7 @@ Thư mục cần có `SHA256SUMS`, `counts.txt`, `workspace-id.txt`, `postgres.d
 | --- | --- |
 | `oasm-images.tar` do `Export-Snapshot.ps1` tạo | Chứa image API, console và worker. Script restore nạp toàn bộ archive, rồi kiểm tra ID của API và console vì hai image này được dùng để mở ứng dụng. |
 | `worker-state.tar.gz` | Archive của volume trạng thái worker. Script kiểm tra checksum của file trong snapshot PoC Windows. Quy trình restore hiện tại chỉ khôi phục volume RustFS và audit. |
-| Worker trên máy đích | `compose.yaml` chưa khai báo worker quét. Docker có thể đã nạp image worker từ snapshot PoC mà chưa có container worker. Để thử kết nối worker và đối chiếu CVE từ file, dùng [overlay kiểm kê thụ động](WORKER-PASSIVE.md) sau khi restore. |
+| Worker trên máy đích | `compose.yaml` chưa khai báo worker quét. Docker có thể đã nạp image worker từ snapshot PoC mà chưa có container worker. Sau khi restore, dùng [overlay kiểm tra worker gốc](WORKER-CHECK.md) để xác nhận container và trạng thái Online, hoặc [overlay kiểm kê thụ động](WORKER-PASSIVE.md) để đối chiếu CVE từ file. |
 
 Sau khi restore snapshot PoC Windows, kiểm tra riêng image đã nạp và các service được khai báo.
 

@@ -1,0 +1,57 @@
+services:
+  core-api:
+    networks: [default, worker-check-api]
+
+  worker-check-gateway:
+    image: local/oasm-api:poc-2e12e49
+    pull_policy: never
+    entrypoint: ["node", "/worker/check-gateway.cjs"]
+    command: []
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [worker-check-api, worker-check-client]
+    depends_on:
+      core-api:
+        condition: service_healthy
+    volumes:
+      - ./worker/check-gateway.cjs:/worker/check-gateway.cjs:ro
+
+  worker-check:
+    image: local/oasm-worker:poc-2e12e49
+    pull_policy: never
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        WORKER_API_KEY=$$(tr -d '\r\n' < /run/secrets/join-key)
+        export WORKER_API_KEY
+        exec /app/oasm-worker
+    command: []
+    user: "${OASM_CHECK_UID:?Set the operator UID}:${OASM_CHECK_GID:?Set the operator GID}"
+    environment:
+      HOME: /state
+      WORKER_NAME: OASM Stock Worker Check
+      WORKER_GRPC_HOST: worker-check-gateway
+      WORKER_GRPC_PORT: "16276"
+      WORKER_MODE: cli
+      WORKER_MAX_CONCURRENCY: "1"
+      WORKER_AGENT_SANDBOX: "true"
+      WORKER_TOKEN_FILE: /state/token
+      WORKER_TOOL_PATH: /state/tools
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [worker-check-client]
+    depends_on:
+      worker-check-gateway:
+        condition: service_started
+    volumes:
+      - ${OASM_CHECK_DIR:?Set the private worker check directory}/join-key:/run/secrets/join-key:ro
+      - ${OASM_CHECK_DIR:?Set the private worker check directory}/state:/state
+
+networks:
+  worker-check-api:
+    internal: true
+  worker-check-client:
+    internal: true
