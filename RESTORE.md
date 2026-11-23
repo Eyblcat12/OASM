@@ -43,7 +43,24 @@ Chép cả thư mục snapshot tới máy đích qua kênh có phân quyền, ng
 ls -lh "$SNAP"
 ```
 
-Thư mục cần có `SHA256SUMS`, `counts.txt`, `workspace-id.txt`, `postgres.dump`, `oasm-images.tar`, `rustfs-data.tar.gz` và `audit-archive.tar.gz`. Snapshot mới có thêm `image-ids.txt`. Snapshot PoC cũ có `redis-data.tar.gz` và `worker-state.tar.gz` trong danh mục checksum. Redis khởi tạo mới khi restore để tránh phát lại hàng đợi cũ. Worker, collector SIEM và đầu nhận TI được cấu hình riêng trên môi trường đích.
+Thư mục cần có `SHA256SUMS`, `counts.txt`, `workspace-id.txt`, `postgres.dump`, `oasm-images.tar`, `rustfs-data.tar.gz` và `audit-archive.tar.gz`. Snapshot xuất bằng `export-data.sh` có thêm `image-ids.txt`. Snapshot từ script PoC Windows `Export-Snapshot.ps1` có `redis-data.tar.gz` và `worker-state.tar.gz` trong danh mục checksum. Redis khởi tạo mới khi restore để tránh phát lại hàng đợi cũ. Collector SIEM và đầu nhận TI được cấu hình riêng trên môi trường đích.
+
+### Image và trạng thái worker khi chuyển từ PoC Windows
+
+| Thành phần | Sau khi phục hồi bằng bộ cài này |
+| --- | --- |
+| `oasm-images.tar` do `Export-Snapshot.ps1` tạo | Chứa image API, console và worker. Script restore nạp toàn bộ archive, rồi kiểm tra ID của API và console vì hai image này được dùng để mở ứng dụng. |
+| `worker-state.tar.gz` | Archive của volume trạng thái worker. Script kiểm tra checksum của file trong snapshot PoC Windows. Quy trình restore hiện tại chỉ khôi phục volume RustFS và audit. |
+| Worker trên máy đích | `compose.yaml` hiện chưa khai báo service worker. Docker có thể đã nạp image worker từ snapshot PoC mà chưa có container worker. |
+
+Sau khi restore snapshot PoC Windows, kiểm tra riêng image đã nạp và các service được khai báo.
+
+```bash
+docker image inspect --format '{{.Id}}' local/oasm-worker:poc-2e12e49
+bash compose.sh config --services
+```
+
+Lệnh thứ nhất đọc thông tin image từ Docker. Lệnh thứ hai liệt kê service của bộ cài. Snapshot do `export-data.sh` tạo từ bộ Compose hiện tại chỉ đóng gói hai image API và console.
 
 ## 3. Chuẩn bị `.env` trên máy đích
 
