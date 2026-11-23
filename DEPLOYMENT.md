@@ -2,6 +2,8 @@
 
 Quy trình này dùng **Compose của Open ASM gốc** và bộ script NCS OASM để chuyển dữ liệu, đổi nhận diện và kết nối SIEM. Chọn **Phần 1** cho Ubuntu hoặc **Phần 2** cho Windows. Cả hai dùng cùng quy trình nghiệm thu dữ liệu và cùng cấu hình đầu nhận.
 
+Phương án bàn giao cho 128 website, gồm VM đề xuất, Caddy, gateway đầu ra, SIEM HTTPS và các điểm chưa nghiệm thu, được chốt tại [PRODUCTION.md](PRODUCTION.md). Đọc phương án này trước khi điền thông số môi trường đích.
+
 | Hạng mục | Phiên bản hoặc phạm vi |
 | --- | --- |
 | Docker | Linux containers trên x86-64, Compose từ **2.24.4** để dùng overlay giới hạn cổng console trên loopback. |
