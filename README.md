@@ -8,7 +8,7 @@ Luồng triển khai đầy đủ trong [DEPLOYMENT.md](DEPLOYMENT.md) dùng Com
 
 ## Bắt đầu
 
-Yêu cầu Docker chạy Linux containers trên máy x86-64, Docker Compose plugin, Git, Bash, Python 3 và curl. Trên Linux dùng Docker Engine; trên Windows dùng Docker Desktop với Ubuntu WSL 2 integration. Quy trình triển khai chính dùng image phát hành đã chọn và không yêu cầu tự build source.
+Yêu cầu Docker chạy Linux containers trên máy x86-64, Docker Compose plugin và Git. Trên Linux dùng Docker Engine; trên Windows có thể cài mới và vận hành bằng PowerShell + Docker Desktop. Các script restore/collector cần Bash, Python 3 và môi trường Linux/Ubuntu WSL có Docker integration. Quy trình triển khai chính dùng image phát hành đã chọn và không yêu cầu tự build source.
 
 ```bash
 git clone https://github.com/Eyblcat12/OASM.git ncs-oasm

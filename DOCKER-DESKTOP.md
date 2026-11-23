@@ -1,6 +1,6 @@
 # Docker Desktop trên Windows
 
-Dùng hướng dẫn này để chạy NCS OASM trên máy Windows x86-64 bằng **Docker Desktop, WSL 2 và Linux containers**. Lệnh kiểm tra Docker có thể chạy trong PowerShell. Lệnh cài OASM và restore snapshot chạy trong Git Bash hoặc distro WSL đã bật Docker integration.
+Dùng Docker Desktop chạy **Linux containers** để triển khai OASM trên Windows x86-64. Có thể cài mới và vận hành Compose upstream bằng PowerShell theo [Deployment trên Windows](DEPLOYMENT.md#phần-2-triển-khai-trên-windows), không bắt buộc mở terminal Ubuntu WSL. Docker Desktop có thể dùng WSL 2 backend hoặc backend Hyper-V trên cấu hình được Docker hỗ trợ. Hướng dẫn dưới đây trình bày cách phổ biến dùng backend WSL 2; cài distro Ubuntu và bật integration khi cần chạy các script restore/collector POSIX của repo.
 
 ## 1. Chuẩn bị Windows và WSL 2
 
@@ -77,6 +77,8 @@ Kiểm tra `OperatingSystem` hiển thị **Docker Desktop**. Nếu distro Ubunt
 | Cổng `6276` đã có tiến trình nghe | Trong PowerShell, chạy `Get-NetTCPConnection -LocalPort 6276 -State Listen` để xem PID và xử lý cổng trước khi mở OASM. |
 
 ## Chọn phương thức cài đặt
+
+Luồng triển khai đầy đủ hiện tại là [Deployment Windows](DEPLOYMENT.md#phần-2-triển-khai-trên-windows): cài mới bằng PowerShell, restore snapshot qua WSL, bật worker gốc và gửi SIEM. Các tài liệu INSTALL/RESTORE bên dưới mô tả bộ PoC trước đây; chọn đúng luồng và không trộn hai bộ Compose vào một instance.
 
 - [Cài mới từ mã nguồn](INSTALL.md) để tạo instance trống.
 - [Khôi phục từ snapshot](RESTORE.md) để mang theo dữ liệu cũ. Chuẩn bị `.env` trong repo rồi chạy `bash deploy-test.sh --check "$snapshot"` trước khi restore. Đặt biến `snapshot` theo đúng đường dẫn của terminal đang dùng.

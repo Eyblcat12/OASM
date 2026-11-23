@@ -13,10 +13,10 @@ Quy trình gồm console, dữ liệu, **worker gốc**, collector và đối so
 
 Chọn một luồng sau khi chuẩn bị Docker, repo và `.env`.
 
-| Trường hợp | Linux | Windows qua WSL 2 |
+| Trường hợp | Linux | Windows |
 | --- | --- | --- |
-| Có snapshot cũ. Giữ khóa mã hóa nguồn, nhập dữ liệu vào project trống rồi đăng nhập bằng tài khoản cũ. | [Khôi phục snapshot](#linux-a-khôi-phục-snapshot-cũ) | [Khôi phục snapshot](#windows-a-khôi-phục-snapshot-cũ) |
-| Cài mới. Tạo khóa riêng, khởi tạo database trống rồi tạo admin đầu tiên. | [Cài mới](#linux-b-cài-mới-từ-đầu) | [Cài mới](#windows-b-cài-mới-từ-đầu) |
+| Có snapshot cũ. Giữ khóa mã hóa nguồn, nhập dữ liệu vào project trống rồi đăng nhập bằng tài khoản cũ. | [Khôi phục snapshot](#linux-a-khôi-phục-snapshot-cũ) | [Khôi phục qua WSL](#6-khôi-phục-snapshot-qua-ubuntu-wsl-2) |
+| Cài mới. Tạo khóa riêng, khởi tạo database trống rồi tạo admin đầu tiên. | [Cài mới](#linux-b-cài-mới-từ-đầu) | [Cài mới bằng PowerShell](#3-cài-mới-bằng-powershell) |
 
 ## Phần 1. Triển khai trên Linux
 
@@ -423,82 +423,226 @@ Trước go-live, lưu commit của hai repo, digest các image, kết quả đ�
 
 ## Phần 2. Triển khai trên Windows
 
-### 1. Chuẩn bị Docker Desktop và WSL 2
+### 1. Phân biệt Docker backend và terminal
 
-Trên Windows x86-64, kiểm tra ảo hóa CPU trong **Task Manager → Performance → CPU**. Nếu chưa cài WSL, mở PowerShell quyền administrator và chạy:
+**OASM gốc cần Docker chạy Linux containers; không bắt buộc mở Ubuntu WSL để chạy Docker Compose.** Có thể cài mới và vận hành stack bằng PowerShell. Hướng dẫn có hai luồng:
+
+| Nhu cầu | Luồng dùng |
+| --- | --- |
+| Cài mới OASM, bật worker và vận hành từ Windows | PowerShell + Docker Desktop, bước 2–5 dưới đây. |
+| Khôi phục snapshot bằng `migrate-upstream-data.sh` hoặc chạy `setup-elastic.py` của repo này | Ubuntu WSL 2 tích hợp Docker Desktop, bước 6–7. Hai script hiện chưa có phiên bản Windows native. |
+| Production trên Ubuntu/ESXi | Docker Engine trực tiếp, làm Phần 1; không cần Docker Desktop/WSL. |
+
+Docker Desktop thường dùng **WSL 2 backend**, nhưng không yêu cầu cài riêng distro Ubuntu để dùng CLI từ PowerShell. Hyper-V backend là lựa chọn khi edition Windows, phần cứng và kiểu cài Docker Desktop hỗ trợ; kiểm tra yêu cầu hiện hành của Docker. Nếu dự kiến dùng các script restore/collector qua Ubuntu WSL, chọn WSL 2 backend ngay từ đầu và bật integration cho distro. [Docker Desktop trên Windows](https://docs.docker.com/desktop/setup/install/windows-install/) · [WSL integration](https://docs.docker.com/desktop/features/wsl/)
+
+Đừng đổi backend hoặc Docker context để xử lý một lỗi ứng dụng mà chưa xác nhận container/volume đang nằm ở engine nào. Docker Desktop không được hỗ trợ trên Windows Server; với máy chủ đó dùng VM Linux phù hợp. [Yêu cầu và nền tảng hỗ trợ](https://docs.docker.com/desktop/setup/install/windows-install/#system-requirements)
+
+### 2. Chuẩn bị Docker Desktop, Git và PowerShell
+
+Kiểm tra **Task Manager → Performance → CPU → Virtualization: Enabled**. Cài Docker Desktop bản x86-64 và [Git for Windows](https://git-scm.com/install/windows), mở Docker Desktop, chọn **Linux containers** và chờ engine hoạt động. Xem [hướng dẫn Docker Desktop](DOCKER-DESKTOP.md) nếu cần cài backend WSL/Hyper-V.
+
+Mở **PowerShell** mới, chạy:
+
+```powershell
+git --version
+docker version
+docker context ls
+docker info --format '{{.OperatingSystem}} / {{.OSType}}/{{.Architecture}}'
+docker compose version
+docker run --rm hello-world
+```
+
+Cần có cả Client/Server, hệ điều hành container `linux`, kiến trúc x86-64/amd64 và Compose từ `2.24.4`. `hello-world` thoát sau khi in kết quả là bình thường. Chỉ dùng context đã xác nhận là Docker Desktop Linux engine; nếu `desktop-linux` hiện trong danh sách nhưng context hiện tại sai, kiểm tra `docker --context desktop-linux info` trước khi chọn. Không dùng chế độ Windows containers cho các image OASM này.
+
+Phần PowerShell dưới đây tương thích cú pháp Windows PowerShell 5.1, không dùng `&&` hoặc mảng Bash. Trong Docker Desktop, có thể xem container, Logs và Stats qua giao diện; Compose CLI vẫn là nguồn cấu hình khi cần tạo lại container.
+
+### 3. Cài mới bằng PowerShell
+
+#### 3.1. Clone repo và chuẩn bị `.env`
+
+Dùng thư mục trong tài khoản Windows, ví dụ dưới đây. Không chạy hai bộ upstream có tên container cố định trên cùng Docker engine.
+
+```powershell
+$NcsPath = Join-Path $env:USERPROFILE 'ncs-oasm'
+$UpstreamPath = Join-Path $env:USERPROFILE 'oasm-upstream'
+$OasmProject = 'oasm-upstream-new'
+
+if (-not (Test-Path (Join-Path $NcsPath '.git'))) {
+    git clone https://github.com/Eyblcat12/OASM.git $NcsPath
+    if ($LASTEXITCODE -ne 0) { throw 'Clone NCS repo failed' }
+}
+if (-not (Test-Path (Join-Path $UpstreamPath '.git'))) {
+    git clone https://github.com/oasm-platform/oasm-docker.git $UpstreamPath
+    if ($LASTEXITCODE -ne 0) { throw 'Clone upstream repo failed' }
+}
+git -C $NcsPath pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw 'Update NCS repo failed' }
+git -C $UpstreamPath status --short
+```
+
+Xác nhận checkout upstream sạch trước khi pin commit. Giữ các thay đổi đang dùng của môi trường khác bằng cách chọn thư mục triển khai riêng.
+
+```powershell
+git -C $UpstreamPath checkout --detach 56dc2c657743200363b65cf2168ae4f91d0a953c
+if ($LASTEXITCODE -ne 0) { throw 'Pin upstream commit failed' }
+$OasmEnvPath = Join-Path $UpstreamPath '.env'
+if (-not (Test-Path $OasmEnvPath)) {
+    Copy-Item -LiteralPath (Join-Path $UpstreamPath '.env.example') -Destination $OasmEnvPath
+}
+notepad.exe $OasmEnvPath
+```
+
+Điền đầy đủ theo [bảng biến môi trường](#3-dùng-image-phát-hành-và-điền-env). Cho bản cài mới này, tối thiểu xác nhận các giá trị sau cùng toàn bộ mật khẩu/khóa riêng trong bảng:
+
+```dotenv
+IMAGE_TAG=v0.13.0
+PORT=6277
+BASE_URL=http://localhost:6276
+DOCKER_GID=0
+WORKER_REPLICAS=1
+WORKER_NAME=oasm-builtin-worker
+```
+
+`DOCKER_GID=0` phù hợp Docker Desktop trong cấu hình này; native Linux phải đọc GID socket thực tế. Đừng mang `COMPOSE_FILE` hoặc `COMPOSE_PATH_SEPARATOR` từ bộ PoC cũ sang `.env` upstream vì có thể trộn các file Compose khác.
+
+Nếu cần tạo khóa hex mà Windows chưa có OpenSSL, chạy hàm PowerShell sau rồi gọi mỗi lần cho một khóa riêng. Đây chỉ là tạo giá trị; vẫn cần điền vào đúng trường `.env` và giữ REDIS_URL khớp REDIS_PASSWORD. Không đưa các giá trị đã tạo vào Git hoặc chat.
+
+```powershell
+function New-OasmSecret {
+    $secretBytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($secretBytes) } finally { $rng.Dispose() }
+    return -join ($secretBytes | ForEach-Object { $_.ToString('x2') })
+}
+New-OasmSecret
+```
+
+Với restore, giữ đúng khóa mã hóa nguồn; không tạo khóa mới thay `ENCRYPTION_KEYS` đã dùng để xuất snapshot. Bảo vệ `.env` bằng quyền truy cập tài khoản Windows và kho bí mật của môi trường.
+
+#### 3.2. Tạo lệnh Compose dùng lại
+
+Sau khi lưu `.env`, khai báo mảng tham số và hàm dưới đây trong **cùng PowerShell**. Hàm dừng khi Docker báo lỗi để tránh tiếp tục trên một stack chưa sẵn sàng.
+
+```powershell
+$OasmCompose = @(
+    'compose', '--project-directory', $UpstreamPath,
+    '--env-file', (Join-Path $UpstreamPath '.env'),
+    '-p', $OasmProject,
+    '-f', (Join-Path $UpstreamPath 'docker-compose.yml'),
+    '-f', (Join-Path $NcsPath 'compose.upstream-data.yaml')
+)
+function Invoke-Oasm {
+    & docker @OasmCompose @args
+    if ($LASTEXITCODE -ne 0) { throw "OASM Compose failed: $LASTEXITCODE" }
+}
+Invoke-Oasm config --quiet
+Invoke-Oasm config --services
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
+```
+
+Danh sách service phải có `oasm-worker`. Kiểm tra không có console cũ giữ cổng 6276 hoặc container upstream cùng tên. Nếu có, xác định đúng instance và bàn giao/dừng riêng service cũ trước khi tiếp tục; đổi project name không tránh được tên container cố định upstream.
+
+#### 3.3. Mở console và bật worker
+
+**Cài mới** trên project/volume trống thì chạy ngay khối dưới. **Khôi phục snapshot** thì làm bước 6 trước; không khởi tạo console trên database đích trước khi importer chạy.
+
+```powershell
+Invoke-Oasm pull console core-api migration oasm-worker
+Invoke-Oasm up -d --wait --wait-timeout 240 console
+Invoke-Oasm up -d --scale oasm-worker=1 oasm-worker
+Invoke-Oasm ps -a
+Invoke-Oasm logs --since 5m --tail 100 oasm-worker
+curl.exe --fail --silent --show-error http://localhost:6276/api/health
+docker exec oasm-api node -p 'process.env.BASE_URL || "(unset)"'
+```
+
+Mở [Open ASM local](http://localhost:6276) bằng trình duyệt Windows. Với cài mới, tạo admin đầu tiên; với restore đăng nhập bằng tài khoản trong snapshot. Xác nhận **Workers → Online** và container worker Up. Worker là service thường trực, connector được tạo khi job thực thi; console mở được chưa chứng minh worker hoạt động.
+
+### 4. Kiểm tra chức năng và vận hành bằng PowerShell
+
+Làm [nghiệm thu dữ liệu và logo](#5-bật-worker-gốc-nghiệm-thu-dữ-liệu-và-đổi-logo). Khi được phép quét, dùng scope nhỏ để xác nhận job được nhận, connector chạy và kết quả được lưu. Không khởi chạy toàn bộ 128 website chỉ để kiểm tra cài đặt.
+
+```powershell
+Invoke-Oasm ps -a
+Invoke-Oasm logs --since 10m --tail 100 core-api oasm-worker
+Get-NetTCPConnection -LocalPort 6276 -State Listen -ErrorAction SilentlyContinue
+docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+```
+
+Nếu sửa `.env`, áp dụng bằng recreate đúng service. Ví dụ BASE_URL cần cập nhật API; thực hiện khi không có job đang chạy vì kết nối worker có thể gián đoạn:
+
+```powershell
+Invoke-Oasm up -d --no-deps --force-recreate --wait --wait-timeout 180 core-api
+docker exec oasm-api node -p 'process.env.BASE_URL'
+```
+
+`restart` chỉ khởi động lại container cũ, không nạp biến `.env` mới. Sau khi mở PowerShell khác, khai báo lại `$NcsPath`, `$UpstreamPath`, `$OasmProject`, `$OasmCompose` và hàm Invoke-Oasm. Giữ đúng project của instance đang chạy. Trong Docker Desktop → **Containers**, chọn project để xem Logs/Stats; không xóa volume khi xử lý lỗi.
+
+### 5. Trường hợp không muốn dùng terminal WSL
+
+Cài mới OASM và bật worker theo bước 3–4 có thể thực hiện hoàn toàn từ PowerShell. Nếu chỉ dùng Compose upstream thì không cần Ubuntu WSL làm terminal. Git Bash cũng chạy được các lệnh Docker Compose, nhưng phải dùng cú pháp Bash và chú ý chuyển đổi đường dẫn khi mount; không dán nguyên mảng Bash vào PowerShell.
+
+**Giới hạn hiện tại của repo:** importer dữ liệu là Bash và bộ setup Elastic kiểm tra môi trường POSIX. Không chạy `python setup-elastic.py` trực tiếp trên Windows Python hoặc đổi tên `.sh` thành `.ps1`. Để dùng các tiện ích này, chọn bước 6–7 qua WSL. Đường cấu hình SIEM thủ công được mô tả ở [SIEM.md](SIEM.md); luồng cài đầy đủ tự động từ PowerShell chưa được cung cấp. Nếu cần giữ hoàn toàn môi trường Windows native cho vận hành, ghi rõ phần restore/collector còn phải giải quyết trước bàn giao.
+
+### 6. Khôi phục snapshot qua Ubuntu WSL 2
+
+Nếu đã cài mới xong ở bước 3 thì bỏ qua bước restore này. Restore yêu cầu đích trống. Dùng **cùng Docker Desktop engine** với PowerShell; WSL integration không tạo một môi trường OASM độc lập. Không cài thêm Docker Engine riêng trong distro khi mục tiêu là dùng dữ liệu/container của Docker Desktop.
+
+Để chuẩn bị distro Ubuntu nếu chưa có, mở PowerShell administrator, chạy và khởi động lại khi Windows yêu cầu:
 
 ```powershell
 wsl --install -d Ubuntu
-```
-
-Khởi động lại nếu được yêu cầu và mở Ubuntu lần đầu để tạo tài khoản. Nếu đã có WSL, cập nhật rồi kiểm tra:
-
-```powershell
 wsl --update
-wsl --version
 wsl --list --verbose
 ```
 
-Tải Docker Desktop từ Docker, chọn backend **WSL 2**, rồi mở Docker Desktop và chọn **Linux containers**. Trong **Settings → Resources → WSL Integration**, bật distro Ubuntu bạn sẽ dùng. [Docker Desktop trên Windows](DOCKER-DESKTOP.md) · [Cài WSL](https://learn.microsoft.com/en-us/windows/wsl/install)
-
-### 2. Mở terminal đúng môi trường
-
-Từ PowerShell, mở distro theo tên hiển thị trong danh sách WSL.
+Mở Ubuntu lần đầu để tạo tài khoản. Đảm bảo distro dùng VERSION 2. Trong Docker Desktop chọn WSL 2 backend và **Settings → Resources → WSL Integration → Ubuntu → Enable**. Mở terminal:
 
 ```powershell
 wsl -d Ubuntu
 ```
 
-Từ đây chạy các lệnh Bash **trong Ubuntu WSL**. Docker Engine do Docker Desktop cung cấp. Cài các công cụ shell trong distro rồi kiểm tra engine hiện tại.
+Các lệnh sau chạy **trong Ubuntu WSL**:
 
 ```bash
 sudo apt update
 sudo apt install git curl ca-certificates openssl python3
-docker version
 docker info --format '{{.OperatingSystem}} / {{.OSType}}/{{.Architecture}}'
 docker compose version
-docker buildx version
 ```
 
-Kết quả phải hiện `Docker Desktop / linux/x86_64`. Nếu `docker` trong WSL không kết nối, bật lại integration cho đúng distro. Nếu shell trỏ nhầm Podman, chạy `unset DOCKER_HOST CONTAINER_HOST DOCKER_CONTEXT`, rồi kiểm tra lại Docker Desktop.
+Phải thấy Docker Desktop/Linux. Nếu shell trỏ nhầm Podman hoặc daemon khác, kiểm tra `docker context ls` và các biến DOCKER_HOST, CONTAINER_HOST, DOCKER_CONTEXT trước khi tiếp tục.
 
-### 3. Clone repo, cấu hình và phục hồi
-
-Để file repo và `.env` trong thư mục home của WSL. Làm theo [bước lấy hai repo](#2-lấy-hai-repo) và [bước chọn image và `.env`](#3-dùng-image-phát-hành-và-điền-env) của Phần 1. Hai bước này chạy nguyên trong Ubuntu WSL. Nếu Docker Desktop hiện đang chạy bản OASM Windows cũ, dùng môi trường đích riêng để tránh trùng tên container, mạng và cổng.
-
-#### Windows A. Khôi phục snapshot cũ
-
-Nếu snapshot nằm ở `E:\private-backup`, đặt đường dẫn dạng `/mnt/e` trong WSL và chạy từ cùng terminal đã đặt `NCS`, `UPSTREAM`, `PROJECT`.
+Chọn **một bộ repo/cấu hình đích duy nhất**. Cách thuận tiện cho restore là đặt repo trong home WSL và thực hiện [bước lấy hai repo](#2-lấy-hai-repo), [điền env](#3-dùng-image-phát-hành-và-điền-env) của Phần 1. Khi đó vận hành stack bằng Bash của Phần 1, không dùng thêm bộ `.env` Windows khác. Đặt project:
 
 ```bash
+export PROJECT=oasm-upstream-restore
 SNAP="/mnt/e/private-backup/oasm-snapshot-YYYYMMDDTHHMMSSZ"
 bash "$NCS/migrate-upstream-data.sh" --check "$SNAP" "$UPSTREAM" "$PROJECT" &&
   bash "$NCS/migrate-upstream-data.sh" "$SNAP" "$UPSTREAM" "$PROJECT"
 ```
 
-Chờ `Upstream data imported and counts matched` rồi chuyển sang bước mở console. Đăng nhập bằng tài khoản đã có trong snapshot.
+Đường dẫn `/mnt/e/...` tương ứng ổ E của Windows; thay bằng vị trí snapshot thật. Chờ `Upstream data imported and counts matched`, rồi làm [mở console trên Linux](#mở-console-trên-linux) và [bật worker bước 5](#5-bật-worker-gốc-nghiệm-thu-dữ-liệu-và-đổi-logo) trong cùng WSL. Mở console trên trình duyệt Windows và đối chiếu dữ liệu với snapshot. Không restore vào stack đã có dữ liệu cài mới.
 
-#### Windows B. Cài mới từ đầu
+### 7. Collector SIEM qua WSL khi OASM chạy từ PowerShell
 
-Tạo khóa mới trong `.env` và dùng project, volume trống. Ví dụ đặt `export PROJECT=oasm-upstream-new`, rồi chuyển thẳng tới bước mở console. Khi màn hình đầu tiên hiện lên, tạo admin cho instance mới.
-
-#### Mở console trên Windows
-
-Sau bước A hoặc B, mở console bằng đúng project đã chọn. Nếu Docker Desktop đã publish cổng `6276`, kiểm tra container giữ cổng theo [bước mở console trên Linux](#mở-console-trên-linux). Các lệnh `docker` ở đó chạy được trong Ubuntu WSL.
+OASM và collector không cần clone repo ở cùng đường dẫn, nhưng phải nhìn thấy cùng Docker daemon và cùng network `oasm_net`. Với OASM đã cài bằng PowerShell, giữ nguyên `$UpstreamPath/.env` và project của nó. Trong Ubuntu WSL tích hợp Docker Desktop, clone repo hỗ trợ vào home WSL nếu chưa có:
 
 ```bash
-upstream_stack=(docker compose --project-directory "$UPSTREAM" --env-file "$UPSTREAM/.env"
-  -p "$PROJECT" -f "$UPSTREAM/docker-compose.yml" -f "$NCS/compose.upstream-data.yaml")
-"${upstream_stack[@]}" config --quiet &&
-  "${upstream_stack[@]}" pull console core-api migration &&
-  "${upstream_stack[@]}" up -d --wait --wait-timeout 240 console &&
-  "${upstream_stack[@]}" ps -a
+sudo apt update
+sudo apt install git curl ca-certificates python3
+[[ -d "$HOME/ncs-oasm/.git" ]] || git clone https://github.com/Eyblcat12/OASM.git "$HOME/ncs-oasm"
+git -C "$HOME/ncs-oasm" pull --ff-only origin main
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
+python3 "$HOME/ncs-oasm/siem/setup-elastic.py"
 ```
 
-Trên Windows, mở [Open ASM local](http://localhost:6276). Có thể kiểm tra cổng từ PowerShell bằng `Get-NetTCPConnection -LocalPort 6276 -State Listen`. Trong Docker Desktop → **Containers**, chọn project `oasm-upstream-restore` hoặc tên đã đặt để xem log container.
+Chọn project **`oasm-upstream-new`** nếu đã cài mới bằng PowerShell ở bước 3; không giữ mặc định `oasm-upstream-restore` khi instance có tên khác. Các giá trị mạng, origin, API nội bộ và key làm theo [bước 6 SIEM](#6-kết-nối-elastic-và-kiểm-tra-dữ-liệu-alert). Collector lưu `~/oasm-siem-managed` trong home WSL và dùng đường dẫn Linux. Không chép mật khẩu sang dòng lệnh PowerShell.
 
-### 4. Bật worker, đổi logo, kết nối SIEM và bàn giao
+Chạy các lệnh validate/up mà setup in ra **trong WSL**. Nghiệm thu đủ bốn dataset trên SIEM theo tên host được ghi trong `collector.env`; với collector này tên host có thể là tên distro WSL, không phải hostname Windows. Không giả định `host.docker.internal:9200` truy cập được một listener Elastic chỉ bind loopback; kiểm tra từ container và đối soát ghi thật. Nếu Elastic ở máy khác, dùng endpoint mạng do quản trị cấp. Mục Windows/VMware ở 6.2 chỉ áp dụng khi có VM VMware riêng.
 
-1. Bật worker gốc theo [bước 5](#5-bật-worker-gốc-nghiệm-thu-dữ-liệu-và-đổi-logo), gồm GID Docker socket và một replica. Kiểm tra container Up và worker Online. Đăng nhập, đối chiếu workspace, assets, findings, URL cùng file đính kèm; đổi tên và logo trong **Admin → Brand**.
-2. Chạy setup, Vector và collector API từ Ubuntu WSL theo [bước 6](#6-kết-nối-elastic-và-kiểm-tra-dữ-liệu-alert). Dùng đường dẫn Linux và xác nhận endpoint Elastic truy cập được từ container. Nếu Ubuntu là VM VMware riêng thay vì WSL, áp dụng mục 6.2 cho đường mạng Windows/VMware. Kiểm tra dữ liệu theo host mới và đối soát chống trùng sau migrate.
-3. Áp dụng [bảng nghiệm thu](#7-bàn-giao-và-vận-hành) trước khi chuyển sang production. Với production trên Linux, dùng cùng commit và phiên bản đã nghiệm thu rồi đặt lại đường dẫn, endpoint, proxy và khóa cho máy đích.
+### 8. Nghiệm thu và bàn giao Windows
+
+Áp dụng [bảng nghiệm thu](#7-bàn-giao-và-vận-hành), gồm worker Online, job thật trên scope được phép, kết quả lưu được, SIEM ghi thật và alert thử nếu nằm trong phạm vi. Ghi rõ backend Docker Desktop, context, project, nơi lưu `.env`, nơi lưu snapshot và đường dẫn collector. Docker Desktop phải chạy để các container hoạt động; kiểm tra lại sau khi Windows reboot và người vận hành đăng nhập. Đặt quy trình khởi động, theo dõi và backup phù hợp trước khi bàn giao.
+
+Khi chuyển lên Ubuntu/ESXi production, giữ release/commit và dữ liệu đã nghiệm thu, dùng Docker Engine native theo Phần 1, đặt lại endpoint/proxy/GID theo máy đích. Snapshot mới phải được xuất từ instance đang vận hành, không dùng lại snapshot PoC cũ nếu muốn mang theo thay đổi mới nhất.
