@@ -19,8 +19,8 @@ cd ncs-oasm
 | --- | --- |
 | Cài một instance trống từ mã nguồn | [Cài đặt và khởi tạo tài khoản quản trị](INSTALL.md) |
 | Chuyển dữ liệu từ instance đã chạy | [Xuất và khôi phục snapshot](RESTORE.md) |
-| Chạy trên Linux hoặc VM | [Docker Engine](DOCKER-ENGINE.md) |
-| Chạy trên Windows | [Docker Desktop](DOCKER-DESKTOP.md) |
+| Cài Docker trên Ubuntu 24.04 hoặc VM Linux | [Docker Engine và Compose](DOCKER-ENGINE.md) |
+| Cài Docker trên Windows | [Docker Desktop và WSL 2](DOCKER-DESKTOP.md) |
 | Dùng giao diện, kiểm tra dịch vụ và thử TI/SIEM | [Vận hành](OPERATIONS.md) |
 | Thu log Docker, audit và kết quả quét vào Elastic, Wazuh hoặc QRadar | [Gửi dữ liệu về SIEM](SIEM.md) |
 
