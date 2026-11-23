@@ -17,8 +17,8 @@ cd ncs-oasm
 
 | Bạn muốn | Tài liệu |
 | --- | --- |
-| Cài một instance trống từ mã nguồn | [Cài đặt và khởi tạo tài khoản quản trị](INSTALL.md) |
-| Chuyển dữ liệu từ instance đã chạy | [Xuất và khôi phục snapshot](RESTORE.md) |
+| Chọn quy trình cài đặt và triển khai trên Linux hoặc Windows | [Hướng dẫn triển khai NCS OASM](INSTALL.md) |
+| Chuyển tài khoản, target, kết quả và cấu hình đã có | [Khôi phục snapshot từng bước](RESTORE.md) |
 | Cài Docker trên Ubuntu 24.04 hoặc VM Linux | [Docker Engine và Compose](DOCKER-ENGINE.md) |
 | Cài Docker trên Windows | [Docker Desktop và WSL 2](DOCKER-DESKTOP.md) |
 | Dùng giao diện, kiểm tra dịch vụ và thử TI/SIEM | [Vận hành](OPERATIONS.md) |
